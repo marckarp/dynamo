@@ -7,7 +7,6 @@ package validation
 
 import (
 	"fmt"
-	"strings"
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
@@ -19,13 +18,12 @@ func validateAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeployme
 	}
 	image := alphaMainContainerImage(spec)
 	imageField := "extraPodSpec.mainContainer.image"
-	trimmedRuntimeVersion := strings.TrimSpace(spec.RuntimeVersion)
 
-	if trimmedRuntimeVersion == "" && image == "" {
+	if spec.RuntimeVersion == "" && image == "" {
 		return fmt.Errorf("%s.runtimeVersion is required because %s is not set; set runtimeVersion explicitly for SHA/custom tags",
 			fieldPath, imageField)
 	}
-	if trimmedRuntimeVersion == "" {
+	if spec.RuntimeVersion == "" {
 		if _, err := runtimeversion.ParseImageVersion(image); err != nil {
 			return fmt.Errorf("%s.runtimeVersion is required because %s %q does not contain a parseable semver tag; set runtimeVersion explicitly for SHA/custom tags",
 				fieldPath, imageField, image)

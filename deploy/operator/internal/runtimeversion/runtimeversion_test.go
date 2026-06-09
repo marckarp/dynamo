@@ -14,6 +14,7 @@ func TestParse(t *testing.T) {
 		want    Version
 		wantErr bool
 	}{
+		{name: "empty", value: "", wantErr: true},
 		{name: "core", value: "1.1.0", want: Version{Major: 1, Minor: 1, Patch: 0}},
 		{name: "major minor", value: "1.1", wantErr: true},
 		{name: "leading v", value: "v1.2.3", wantErr: true},
