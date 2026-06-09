@@ -6,8 +6,8 @@
 package validation
 
 import (
-	"errors"
 	"fmt"
+	"strings"
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
@@ -18,35 +18,39 @@ func validateAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeployme
 		return nil
 	}
 	image := alphaMainContainerImage(spec)
-	if _, err := runtimeversion.Resolve(spec.RuntimeVersion, image); err != nil {
-		return runtimeVersionAdmissionError(err, spec.RuntimeVersion, image, fieldPath, "extraPodSpec.mainContainer.image")
+	imageField := "extraPodSpec.mainContainer.image"
+
+	if strings.TrimSpace(spec.RuntimeVersion) == "" {
+		if _, err := runtimeversion.ParseImageVersion(image); err != nil {
+			return runtimeVersionRequiredError(image, fieldPath, imageField)
+		}
+		return nil
+	}
+
+	explicitVersion, err := runtimeversion.Normalize(spec.RuntimeVersion)
+	if err != nil {
+		return fmt.Errorf("%s.runtimeVersion has invalid value %q: must be a semantic version such as \"1.1\" or \"1.1.0\"",
+			fieldPath, spec.RuntimeVersion)
+	}
+
+	imageVersion, err := runtimeversion.ParseImageVersion(image)
+	if err != nil {
+		return nil
+	}
+	if explicitVersion != imageVersion {
+		return fmt.Errorf("%s.runtimeVersion has invalid value %q: runtime version %q does not match image tag runtime version %q derived from %s %q",
+			fieldPath, spec.RuntimeVersion, explicitVersion, imageVersion, imageField, image)
 	}
 	return nil
 }
 
-func runtimeVersionAdmissionError(err error, runtimeVersion, image, fieldPath, imageField string) error {
-	var resolveErr *runtimeversion.ResolutionError
-	if !errors.As(err, &resolveErr) {
-		return fmt.Errorf("%s.runtimeVersion: %w", fieldPath, err)
+func runtimeVersionRequiredError(image, fieldPath, imageField string) error {
+	if image == "" {
+		return fmt.Errorf("%s.runtimeVersion is required because %s is not set; set runtimeVersion explicitly for SHA/custom tags",
+			fieldPath, imageField)
 	}
-
-	switch resolveErr.Kind {
-	case runtimeversion.ErrorInvalidExplicit:
-		return fmt.Errorf("%s.runtimeVersion has invalid value %q: must be a semantic version such as \"1.1\" or \"1.1.0\"",
-			fieldPath, runtimeVersion)
-	case runtimeversion.ErrorMismatch:
-		return fmt.Errorf("%s.runtimeVersion has invalid value %q: runtime version %q does not match image tag runtime version %q derived from %s %q",
-			fieldPath, runtimeVersion, resolveErr.ExplicitVersion, resolveErr.ImageVersion, imageField, image)
-	case runtimeversion.ErrorUnresolved:
-		if image == "" {
-			return fmt.Errorf("%s.runtimeVersion is required because %s is not set; set runtimeVersion explicitly for SHA/custom tags",
-				fieldPath, imageField)
-		}
-		return fmt.Errorf("%s.runtimeVersion is required because %s %q does not contain a parseable semver tag; set runtimeVersion explicitly for SHA/custom tags",
-			fieldPath, imageField, image)
-	default:
-		return fmt.Errorf("%s.runtimeVersion: %w", fieldPath, err)
-	}
+	return fmt.Errorf("%s.runtimeVersion is required because %s %q does not contain a parseable semver tag; set runtimeVersion explicitly for SHA/custom tags",
+		fieldPath, imageField, image)
 }
 
 func alphaMainContainerImage(spec *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec) string {

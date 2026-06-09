@@ -17,7 +17,7 @@ func defaultAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeploymen
 	if spec == nil || strings.TrimSpace(spec.RuntimeVersion) != "" {
 		return false
 	}
-	version, err := runtimeversion.Resolve("", alphaMainContainerImage(spec))
+	version, err := runtimeversion.ParseImageVersion(alphaMainContainerImage(spec))
 	if err != nil {
 		return false
 	}
@@ -29,7 +29,7 @@ func defaultBetaRuntimeVersion(spec *nvidiacomv1beta1.DynamoComponentDeploymentS
 	if spec == nil || strings.TrimSpace(spec.RuntimeVersion) != "" {
 		return false
 	}
-	version, err := runtimeversion.Resolve("", betaMainContainerImage(spec))
+	version, err := runtimeversion.ParseImageVersion(betaMainContainerImage(spec))
 	if err != nil {
 		return false
 	}
