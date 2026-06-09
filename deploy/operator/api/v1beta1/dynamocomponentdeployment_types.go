@@ -96,6 +96,13 @@ type DynamoComponentDeploymentSharedSpec struct {
 	// +optional
 	ComponentType ComponentType `json:"type,omitempty"`
 
+	// runtimeVersion is the Dynamo runtime compatibility version for this
+	// component. When omitted, the defaulting webhook derives it from a
+	// parseable main container image tag such as `vllm-runtime:1.1.0` -> `1.1`.
+	// Set this explicitly when using SHA-tagged or custom runtime images.
+	// +optional
+	RuntimeVersion string `json:"runtimeVersion,omitempty"`
+
 	// globalDynamoNamespace places the component in the global Dynamo
 	// namespace rather than the per-deployment namespace derived from the
 	// DGD name.

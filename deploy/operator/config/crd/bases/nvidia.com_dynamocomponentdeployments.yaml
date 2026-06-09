@@ -11370,6 +11370,13 @@ spec:
                           type: string
                       type: object
                   type: object
+                runtimeVersion:
+                  description: |-
+                    RuntimeVersion is the Dynamo runtime compatibility version for this component.
+                    When omitted, the defaulting webhook derives it from a parseable main
+                    container image tag such as `vllm-runtime:1.1.0` -> `1.1`. Set this
+                    explicitly when using SHA-tagged or custom runtime images.
+                  type: string
                 scalingAdapter:
                   description: |-
                     ScalingAdapter configures whether this service uses the DynamoGraphDeploymentScalingAdapter.
@@ -20219,6 +20226,13 @@ spec:
                   format: int32
                   minimum: 0
                   type: integer
+                runtimeVersion:
+                  description: |-
+                    runtimeVersion is the Dynamo runtime compatibility version for this
+                    component. When omitted, the defaulting webhook derives it from a
+                    parseable main container image tag such as `vllm-runtime:1.1.0` -> `1.1`.
+                    Set this explicitly when using SHA-tagged or custom runtime images.
+                  type: string
                 scalingAdapter:
                   description: |-
                     scalingAdapter opts this component into using the

@@ -24,6 +24,7 @@ import (
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/consts"
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
@@ -260,5 +261,71 @@ func TestDGDDefaulter_DefaultsNilReplicas(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDGDDefaulter_DefaultsRuntimeVersion(t *testing.T) {
+	tests := []struct {
+		name string
+		op   admissionv1.Operation
+		svc  *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec
+		want string
+	}{
+		{
+			name: "CREATE derives runtimeVersion from semver image tag",
+			op:   admissionv1.Create,
+			svc:  alphaServiceWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0"),
+			want: "1.1",
+		},
+		{
+			name: "UPDATE derives runtimeVersion for newly added service",
+			op:   admissionv1.Update,
+			svc:  alphaServiceWithImage("localhost:5000/dynamo-runtime:v1.2.3-rc1"),
+			want: "1.2",
+		},
+		{
+			name: "preserves explicit runtimeVersion",
+			op:   admissionv1.Create,
+			svc: func() *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec {
+				svc := alphaServiceWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0")
+				svc.RuntimeVersion = "1.1"
+				return svc
+			}(),
+			want: "1.1",
+		},
+		{
+			name: "does not default unparseable image tag",
+			op:   admissionv1.Create,
+			svc:  alphaServiceWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:latest"),
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dgd := &nvidiacomv1alpha1.DynamoGraphDeployment{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
+					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+						"worker": tt.svc,
+					},
+				},
+			}
+
+			if err := NewDGDDefaulter("1.0.0").Default(admissionCtx(tt.op), dgd); err != nil {
+				t.Fatalf("Default() unexpected error: %v", err)
+			}
+			if got := dgd.Spec.Services["worker"].RuntimeVersion; got != tt.want {
+				t.Fatalf("runtimeVersion = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func alphaServiceWithImage(image string) *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec {
+	return &nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+		ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
+			MainContainer: &corev1.Container{Image: image},
+		},
 	}
 }

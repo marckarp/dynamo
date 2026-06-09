@@ -23,6 +23,7 @@ import (
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/consts"
+	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
 	internalwebhook "github.com/ai-dynamo/dynamo/deploy/operator/internal/webhook"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -82,6 +83,11 @@ func (d *DGDDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 		if svc != nil && svc.Replicas == nil {
 			svc.Replicas = ptr.To(int32(1))
 			logger.V(1).Info("defaulted nil replicas to 1", "service", name)
+		}
+		if runtimeversion.DefaultAlphaSharedSpec(svc) {
+			logger.V(1).Info("defaulted runtimeVersion from main container image tag",
+				"service", name,
+				"runtimeVersion", svc.RuntimeVersion)
 		}
 	}
 

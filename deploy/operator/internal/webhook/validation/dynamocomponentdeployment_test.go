@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -47,12 +48,69 @@ func TestDynamoComponentDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoComponentDeploymentSpec{
 					DynamoComponentDeploymentSharedSpec: nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						Replicas: &validReplicas,
+						Replicas:       &validReplicas,
+						RuntimeVersion: "1.1",
 					},
 					BackendFramework: "sglang",
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name: "valid deployment derives runtime version from image",
+			deployment: &nvidiacomv1alpha1.DynamoComponentDeployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: "default",
+				},
+				Spec: nvidiacomv1alpha1.DynamoComponentDeploymentSpec{
+					DynamoComponentDeploymentSharedSpec: nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+						Replicas: &validReplicas,
+						ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
+							MainContainer: &corev1.Container{Image: "vllm-runtime:1.1.0"},
+						},
+					},
+					BackendFramework: "sglang",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing runtime version with custom image tag",
+			deployment: &nvidiacomv1alpha1.DynamoComponentDeployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: "default",
+				},
+				Spec: nvidiacomv1alpha1.DynamoComponentDeploymentSpec{
+					DynamoComponentDeploymentSharedSpec: nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+						ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
+							MainContainer: &corev1.Container{Image: "vllm-runtime:latest"},
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  `spec.runtimeVersion is required because extraPodSpec.mainContainer.image "vllm-runtime:latest" does not contain a parseable semver tag; set runtimeVersion explicitly for SHA/custom tags`,
+		},
+		{
+			name: "runtime version disagrees with image tag",
+			deployment: &nvidiacomv1alpha1.DynamoComponentDeployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-deployment",
+					Namespace: "default",
+				},
+				Spec: nvidiacomv1alpha1.DynamoComponentDeploymentSpec{
+					DynamoComponentDeploymentSharedSpec: nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+						RuntimeVersion: "1.1",
+						ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
+							MainContainer: &corev1.Container{Image: "vllm-runtime:1.2.0"},
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  `spec.runtimeVersion has invalid value "1.1": runtime version "1.1" does not match image tag runtime version "1.2" derived from extraPodSpec.mainContainer.image "vllm-runtime:1.2.0"`,
 		},
 		{
 			name: "invalid replicas",

@@ -149,6 +149,7 @@ func ConvertFromDynamoComponentDeploymentSharedSpec(src *DynamoComponentDeployme
 	// source of truth on v1alpha1); for standalone DCDs the caller falls
 	// back to ObjectMeta.Name when src.ServiceName is empty.
 	dst.ComponentName = src.ServiceName
+	dst.RuntimeVersion = src.RuntimeVersion
 
 	dst.GlobalDynamoNamespace = src.GlobalDynamoNamespace
 	dst.Replicas = src.Replicas
@@ -518,6 +519,7 @@ func ConvertToDynamoComponentDeploymentSharedSpec(src *v1beta1.DynamoComponentDe
 	}
 
 	dst.ServiceName = src.ComponentName
+	dst.RuntimeVersion = src.RuntimeVersion
 
 	// sharedMemorySize -> SharedMemorySpec.
 	if src.SharedMemorySize != nil {

@@ -100,3 +100,68 @@ func TestDCDDefaulter_DefaultRejectsWrongType(t *testing.T) {
 		t.Fatal("Default() error = nil, want type error")
 	}
 }
+
+func TestDCDDefaulter_DefaultsRuntimeVersion(t *testing.T) {
+	tests := []struct {
+		name string
+		ctx  context.Context
+		dcd  *nvidiacomv1beta1.DynamoComponentDeployment
+		want string
+	}{
+		{
+			name: "CREATE derives runtimeVersion from semver image tag",
+			ctx:  admissionCtx(admissionv1.Create),
+			dcd:  betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0"),
+			want: "1.1",
+		},
+		{
+			name: "UPDATE derives runtimeVersion",
+			ctx:  admissionCtx(admissionv1.Update),
+			dcd:  betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:v1.2.3"),
+			want: "1.2",
+		},
+		{
+			name: "preserves explicit runtimeVersion",
+			ctx:  admissionCtx(admissionv1.Create),
+			dcd: func() *nvidiacomv1beta1.DynamoComponentDeployment {
+				dcd := betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0")
+				dcd.Spec.RuntimeVersion = "1.1"
+				return dcd
+			}(),
+			want: "1.1",
+		},
+		{
+			name: "does not default unparseable image tag",
+			ctx:  admissionCtx(admissionv1.Create),
+			dcd:  betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:latest"),
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := NewDCDDefaulter().Default(tt.ctx, tt.dcd); err != nil {
+				t.Fatalf("Default() unexpected error: %v", err)
+			}
+			if got := tt.dcd.Spec.RuntimeVersion; got != tt.want {
+				t.Fatalf("runtimeVersion = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func betaDCDWithImage(image string) *nvidiacomv1beta1.DynamoComponentDeployment {
+	return &nvidiacomv1beta1.DynamoComponentDeployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "worker"},
+		Spec: nvidiacomv1beta1.DynamoComponentDeploymentSpec{
+			DynamoComponentDeploymentSharedSpec: nvidiacomv1beta1.DynamoComponentDeploymentSharedSpec{
+				ComponentName: "worker",
+				PodTemplate: &corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{{Name: nvidiacomv1beta1.MainContainerName, Image: image}},
+					},
+				},
+			},
+		},
+	}
+}

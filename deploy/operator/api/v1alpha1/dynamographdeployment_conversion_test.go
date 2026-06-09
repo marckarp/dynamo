@@ -117,9 +117,10 @@ func TestDGD_RoundTrip_Minimal(t *testing.T) {
 			BackendFramework: "vllm",
 			Components: []v1beta1.DynamoComponentDeploymentSharedSpec{
 				{
-					ComponentName: "worker",
-					ComponentType: v1beta1.ComponentTypeWorker,
-					Replicas:      &replicas},
+					ComponentName:  "worker",
+					ComponentType:  v1beta1.ComponentTypeWorker,
+					RuntimeVersion: "1.1",
+					Replicas:       &replicas},
 			},
 		},
 	}

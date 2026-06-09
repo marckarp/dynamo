@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
+	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -46,9 +47,15 @@ func (v *DynamoComponentDeploymentValidator) Validate(ctx context.Context) (admi
 	calculatedNamespace := v.deployment.GetDynamoNamespace()
 	sharedValidator := NewSharedSpecValidator(&v.deployment.Spec.DynamoComponentDeploymentSharedSpec, "spec", calculatedNamespace)
 
-	// DCD-specific validation would go here (currently none)
+	warnings, err := sharedValidator.Validate(ctx)
+	if err != nil {
+		return warnings, err
+	}
+	if err := runtimeversion.ValidateAlphaSharedSpec(&v.deployment.Spec.DynamoComponentDeploymentSharedSpec, "spec"); err != nil {
+		return nil, err
+	}
 
-	return sharedValidator.Validate(ctx)
+	return warnings, nil
 }
 
 // ValidateUpdate performs stateful validation comparing old and new DynamoComponentDeployment.

@@ -28,6 +28,7 @@ import (
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/consts"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/dynamo"
+	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
 	internalwebhook "github.com/ai-dynamo/dynamo/deploy/operator/internal/webhook"
 	grovev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -329,6 +330,7 @@ func (v *DynamoGraphDeploymentValidator) validateReplicasChanges(old *nvidiacomv
 // validateService validates a single service configuration using SharedSpecValidator.
 // Returns warnings and error.
 func (v *DynamoGraphDeploymentValidator) validateService(ctx context.Context, serviceName string, service *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec) (admission.Warnings, error) {
+	fieldPath := fmt.Sprintf("spec.services[%s]", serviceName)
 	// The inter-pod GMS layout (with or without failover) requires the Grove
 	// pathway: the weight-server pod, per-rank PCLQs, and DRA ResourceClaim
 	// templates are all wired at the PodCliqueScalingGroup level, which only
@@ -367,7 +369,6 @@ func (v *DynamoGraphDeploymentValidator) validateService(ctx context.Context, se
 	}
 
 	// Use SharedSpecValidator to validate service spec (which is a DynamoComponentDeploymentSharedSpec)
-	fieldPath := fmt.Sprintf("spec.services[%s]", serviceName)
 	calculatedNamespace := v.deployment.GetDynamoNamespaceForService(service)
 
 	var sharedValidator *SharedSpecValidator
@@ -377,7 +378,14 @@ func (v *DynamoGraphDeploymentValidator) validateService(ctx context.Context, se
 		sharedValidator = NewSharedSpecValidator(service, fieldPath, calculatedNamespace)
 	}
 
-	return sharedValidator.Validate(ctx)
+	warnings, err := sharedValidator.Validate(ctx)
+	if err != nil {
+		return warnings, err
+	}
+	if err := runtimeversion.ValidateAlphaSharedSpec(service, fieldPath); err != nil {
+		return nil, err
+	}
+	return warnings, nil
 }
 
 // validateServiceNameLength validates that the service name combined with the

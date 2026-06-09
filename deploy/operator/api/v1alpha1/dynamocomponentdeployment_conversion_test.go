@@ -82,9 +82,10 @@ func TestDCD_RoundTrip_Minimal(t *testing.T) {
 		Spec: v1beta1.DynamoComponentDeploymentSpec{
 			BackendFramework: "vllm",
 			DynamoComponentDeploymentSharedSpec: v1beta1.DynamoComponentDeploymentSharedSpec{
-				ComponentName: "min",
-				ComponentType: v1beta1.ComponentTypeWorker,
-				Replicas:      &replicas,
+				ComponentName:  "min",
+				ComponentType:  v1beta1.ComponentTypeWorker,
+				RuntimeVersion: "1.1",
+				Replicas:       &replicas,
 			},
 		},
 	}

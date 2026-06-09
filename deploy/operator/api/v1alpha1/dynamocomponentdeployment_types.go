@@ -67,6 +67,13 @@ type DynamoComponentDeploymentSharedSpec struct {
 	// SubComponentType indicates the sub-role of this component (for example, "prefill").
 	SubComponentType string `json:"subComponentType,omitempty"`
 
+	// RuntimeVersion is the Dynamo runtime compatibility version for this component.
+	// When omitted, the defaulting webhook derives it from a parseable main
+	// container image tag such as `vllm-runtime:1.1.0` -> `1.1`. Set this
+	// explicitly when using SHA-tagged or custom runtime images.
+	// +optional
+	RuntimeVersion string `json:"runtimeVersion,omitempty"`
+
 	// DynamoNamespace is deprecated and will be removed in a future version.
 	// The DGD Kubernetes namespace and DynamoGraphDeployment name are used to construct the Dynamo namespace for each component
 	// +kubebuilder:validation:Optional
