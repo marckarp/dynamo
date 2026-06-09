@@ -139,7 +139,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"main": {
 							Replicas:       &validReplicas,
-							RuntimeVersion: "1.1",
+							RuntimeVersion: "1.1.0",
 							ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
 								MainContainer: &corev1.Container{Image: "vllm-runtime:1.2.0"},
 							},
@@ -148,7 +148,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 			},
 			wantErr:                true,
-			errMsg:                 `spec.services[main].runtimeVersion has invalid value "1.1": runtime version "1.1" does not match image tag runtime version "1.2" derived from extraPodSpec.mainContainer.image "vllm-runtime:1.2.0"`,
+			errMsg:                 `spec.services[main].runtimeVersion has invalid value "1.1.0": runtime version "1.1.0" does not match image tag runtime version "1.2.0" derived from extraPodSpec.mainContainer.image "vllm-runtime:1.2.0"`,
 			preserveRuntimeVersion: true,
 		},
 		{

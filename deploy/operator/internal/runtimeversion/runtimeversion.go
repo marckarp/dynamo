@@ -13,34 +13,72 @@ import (
 	semver "github.com/Masterminds/semver/v3"
 )
 
-var runtimeVersionPattern = regexp.MustCompile(`^[vV]?[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$`)
+// RuntimeVersionPattern is the CRD validation pattern for explicit
+// runtimeVersion field values.
+const RuntimeVersionPattern = `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`
 
-// Normalize returns the runtime compatibility version (major.minor) for a
-// semver-like runtimeVersion value.
-func Normalize(value string) (string, error) {
+var (
+	runtimeVersionPattern = regexp.MustCompile(RuntimeVersionPattern)
+	imageTagPattern       = regexp.MustCompile(`^[vV]?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
+)
+
+// Version identifies a runtime compatibility version by semver core.
+type Version struct {
+	Major uint64
+	Minor uint64
+	Patch uint64
+}
+
+func (v Version) String() string {
+	return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
+}
+
+// Parse returns the runtime compatibility version for an explicit
+// runtimeVersion field value.
+func Parse(value string) (Version, error) {
 	trimmed := strings.TrimSpace(value)
 	if !runtimeVersionPattern.MatchString(trimmed) {
-		return "", fmt.Errorf("must be a semantic version such as \"1.1\" or \"1.1.0\"")
+		return Version{}, fmt.Errorf("must be a semantic version such as \"1.1.0\"")
 	}
-	version, err := semver.NewVersion(canonicalSemverInput(trimmed))
+	version, err := semver.StrictNewVersion(trimmed)
 	if err != nil {
-		return "", fmt.Errorf("must be a semantic version such as \"1.1\" or \"1.1.0\"")
+		return Version{}, fmt.Errorf("must be a semantic version such as \"1.1.0\"")
 	}
-	return fmt.Sprintf("%d.%d", version.Major(), version.Minor()), nil
+	return fromSemver(version), nil
 }
 
 // ParseImageVersion returns the normalized runtime compatibility version
-// (major.minor) from a parseable image tag.
-func ParseImageVersion(image string) (string, error) {
+// from a parseable image tag.
+func ParseImageVersion(image string) (Version, error) {
 	tag := imageTag(image)
 	if tag == "" {
-		return "", fmt.Errorf("image %q does not contain a tag", image)
+		return Version{}, fmt.Errorf("image %q does not contain a tag", image)
 	}
-	version, err := Normalize(tag)
+	version, err := parseImageTag(tag)
 	if err != nil {
-		return "", fmt.Errorf("image tag %q: %w", tag, err)
+		return Version{}, fmt.Errorf("image tag %q: %w", tag, err)
 	}
 	return version, nil
+}
+
+func parseImageTag(tag string) (Version, error) {
+	trimmed := strings.TrimSpace(tag)
+	if !imageTagPattern.MatchString(trimmed) {
+		return Version{}, fmt.Errorf("must contain a semantic version such as \"1.1.0\"")
+	}
+	version, err := semver.StrictNewVersion(strings.TrimPrefix(strings.TrimPrefix(trimmed, "v"), "V"))
+	if err != nil {
+		return Version{}, fmt.Errorf("must contain a semantic version such as \"1.1.0\"")
+	}
+	return fromSemver(version), nil
+}
+
+func fromSemver(version *semver.Version) Version {
+	return Version{
+		Major: version.Major(),
+		Minor: version.Minor(),
+		Patch: version.Patch(),
+	}
 }
 
 func imageTag(image string) string {
@@ -57,18 +95,4 @@ func imageTag(image string) string {
 		return ""
 	}
 	return ref[lastColon+1:]
-}
-
-func canonicalSemverInput(value string) string {
-	out := strings.TrimPrefix(strings.TrimPrefix(value, "v"), "V")
-	suffixStart := len(out)
-	if idx := strings.IndexAny(out, "-+"); idx >= 0 {
-		suffixStart = idx
-	}
-	core := out[:suffixStart]
-	suffix := out[suffixStart:]
-	if strings.Count(core, ".") == 1 {
-		return core + ".0" + suffix
-	}
-	return out
 }

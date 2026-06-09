@@ -21,7 +21,7 @@ func defaultAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeploymen
 	if err != nil {
 		return false
 	}
-	spec.RuntimeVersion = version
+	spec.RuntimeVersion = version.String()
 	return true
 }
 
@@ -33,7 +33,7 @@ func defaultBetaRuntimeVersion(spec *nvidiacomv1beta1.DynamoComponentDeploymentS
 	if err != nil {
 		return false
 	}
-	spec.RuntimeVersion = version
+	spec.RuntimeVersion = version.String()
 	return true
 }
 

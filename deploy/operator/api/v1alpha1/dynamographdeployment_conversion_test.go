@@ -119,7 +119,7 @@ func TestDGD_RoundTrip_Minimal(t *testing.T) {
 				{
 					ComponentName:  "worker",
 					ComponentType:  v1beta1.ComponentTypeWorker,
-					RuntimeVersion: "1.1",
+					RuntimeVersion: "1.1.0",
 					Replicas:       &replicas},
 			},
 		},

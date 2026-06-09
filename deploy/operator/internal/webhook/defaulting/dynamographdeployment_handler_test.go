@@ -275,23 +275,23 @@ func TestDGDDefaulter_DefaultsRuntimeVersion(t *testing.T) {
 			name: "CREATE derives runtimeVersion from semver image tag",
 			op:   admissionv1.Create,
 			svc:  alphaServiceWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0"),
-			want: "1.1",
+			want: "1.1.0",
 		},
 		{
 			name: "UPDATE derives runtimeVersion for newly added service",
 			op:   admissionv1.Update,
 			svc:  alphaServiceWithImage("localhost:5000/dynamo-runtime:v1.2.3-rc1"),
-			want: "1.2",
+			want: "1.2.3",
 		},
 		{
 			name: "preserves explicit runtimeVersion",
 			op:   admissionv1.Create,
 			svc: func() *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec {
 				svc := alphaServiceWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0")
-				svc.RuntimeVersion = "1.1"
+				svc.RuntimeVersion = "1.1.0"
 				return svc
 			}(),
-			want: "1.1",
+			want: "1.1.0",
 		},
 		{
 			name: "does not default unparseable image tag",

@@ -112,23 +112,23 @@ func TestDCDDefaulter_DefaultsRuntimeVersion(t *testing.T) {
 			name: "CREATE derives runtimeVersion from semver image tag",
 			ctx:  admissionCtx(admissionv1.Create),
 			dcd:  betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0"),
-			want: "1.1",
+			want: "1.1.0",
 		},
 		{
 			name: "UPDATE derives runtimeVersion",
 			ctx:  admissionCtx(admissionv1.Update),
 			dcd:  betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:v1.2.3"),
-			want: "1.2",
+			want: "1.2.3",
 		},
 		{
 			name: "preserves explicit runtimeVersion",
 			ctx:  admissionCtx(admissionv1.Create),
 			dcd: func() *nvidiacomv1beta1.DynamoComponentDeployment {
 				dcd := betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0")
-				dcd.Spec.RuntimeVersion = "1.1"
+				dcd.Spec.RuntimeVersion = "1.1.0"
 				return dcd
 			}(),
-			want: "1.1",
+			want: "1.1.0",
 		},
 		{
 			name: "does not default unparseable image tag",

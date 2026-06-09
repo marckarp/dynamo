@@ -33,9 +33,9 @@ func validateAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeployme
 		return nil
 	}
 
-	explicitVersion, err := runtimeversion.Normalize(spec.RuntimeVersion)
+	explicitVersion, err := runtimeversion.Parse(spec.RuntimeVersion)
 	if err != nil {
-		return fmt.Errorf("%s.runtimeVersion has invalid value %q: must be a semantic version such as \"1.1\" or \"1.1.0\"",
+		return fmt.Errorf("%s.runtimeVersion has invalid value %q: must be a semantic version such as \"1.1.0\"",
 			fieldPath, spec.RuntimeVersion)
 	}
 
@@ -45,7 +45,7 @@ func validateAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeployme
 	}
 	if explicitVersion != imageVersion {
 		return fmt.Errorf("%s.runtimeVersion has invalid value %q: runtime version %q does not match image tag runtime version %q derived from %s %q",
-			fieldPath, spec.RuntimeVersion, explicitVersion, imageVersion, imageField, image)
+			fieldPath, spec.RuntimeVersion, explicitVersion.String(), imageVersion.String(), imageField, image)
 	}
 	return nil
 }
