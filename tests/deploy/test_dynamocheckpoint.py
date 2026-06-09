@@ -15,6 +15,7 @@ import pytest
 import requests
 from kubernetes_asyncio.client import exceptions as k8s_exceptions
 
+from tests.deploy.conftest import DEFAULT_DEPLOY_RUNTIME_VERSION
 from tests.utils.client import send_request, wait_for_model_availability
 from tests.utils.managed_deployment import (
     DeploymentSpec,
@@ -150,7 +151,13 @@ def _new_checkpoint_spec(
     deployment_spec.name = name
     deployment_spec.namespace = namespace
     deployment_spec.set_image(frontend_image, backend.frontend_component)
+    deployment_spec.set_runtime_version(
+        DEFAULT_DEPLOY_RUNTIME_VERSION, backend.frontend_component
+    )
     deployment_spec.set_image(image, backend.decode_component)
+    deployment_spec.set_runtime_version(
+        DEFAULT_DEPLOY_RUNTIME_VERSION, backend.decode_component
+    )
     deployment_spec.set_model(backend.model, backend.decode_component)
 
     raw_spec = deployment_spec.spec()

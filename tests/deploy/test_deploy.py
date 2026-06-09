@@ -19,7 +19,7 @@ import pytest
 import requests
 import yaml
 
-from tests.deploy.conftest import DeploymentTarget
+from tests.deploy.conftest import DEFAULT_DEPLOY_RUNTIME_VERSION, DeploymentTarget
 from tests.utils.client import send_request, wait_for_model_availability
 from tests.utils.managed_deployment import (
     DeploymentSpec,
@@ -285,8 +285,14 @@ async def test_gaie_deployment(
     logger.info(f"Worker image: {worker_image}")
 
     deployment_spec.set_image(frontend_image, service_name="Epp")
+    deployment_spec.set_runtime_version(
+        DEFAULT_DEPLOY_RUNTIME_VERSION, service_name="Epp"
+    )
     for worker in ("VllmPrefillWorker", "VllmDecodeWorker"):
         deployment_spec.set_image(worker_image, service_name=worker)
+        deployment_spec.set_runtime_version(
+            DEFAULT_DEPLOY_RUNTIME_VERSION, service_name=worker
+        )
         deployment_spec.set_frontend_sidecar_image(frontend_image, service_name=worker)
 
     route_hostname = f"{namespace}.example.com"

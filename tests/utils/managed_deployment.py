@@ -165,6 +165,14 @@ class ServiceSpec:
         self._spec["frontendSidecar"]["image"] = value
 
     @property
+    def runtime_version(self) -> Optional[str]:
+        return self._spec.get("runtimeVersion")
+
+    @runtime_version.setter
+    def runtime_version(self, value: str):
+        self._spec["runtimeVersion"] = value
+
+    @property
     def envs(self) -> list[dict[str, str]]:
         """Environment variables for the service.
 
@@ -484,6 +492,16 @@ class DeploymentSpec:
             services = [self[service_name]]
         for service in services:
             service.image = image
+
+    def set_runtime_version(
+        self, runtime_version: str, service_name: Optional[str] = None
+    ):
+        if service_name is None:
+            services = self.services
+        else:
+            services = [self[service_name]]
+        for service in services:
+            service.runtime_version = runtime_version
 
     def set_frontend_sidecar_image(
         self, image: str, service_name: Optional[str] = None

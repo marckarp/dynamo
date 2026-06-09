@@ -16,6 +16,8 @@ import pytest
 
 from tests.utils.managed_deployment import DeploymentSpec, _get_workspace_dir
 
+DEFAULT_DEPLOY_RUNTIME_VERSION = "1.2.0"
+
 
 # Shared CLI options (--image, --namespace, --skip-service-restart) are defined in tests/conftest.py.
 # Deploy-specific options are defined here.
@@ -342,5 +344,6 @@ def deployment_spec(
     # Override image if provided
     if image:
         spec.set_image(image)
+        spec.set_runtime_version(DEFAULT_DEPLOY_RUNTIME_VERSION)
 
     return spec
