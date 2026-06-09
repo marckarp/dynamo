@@ -19,10 +19,16 @@ func validateAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeployme
 	}
 	image := alphaMainContainerImage(spec)
 	imageField := "extraPodSpec.mainContainer.image"
+	trimmedRuntimeVersion := strings.TrimSpace(spec.RuntimeVersion)
 
-	if strings.TrimSpace(spec.RuntimeVersion) == "" {
+	if trimmedRuntimeVersion == "" && image == "" {
+		return fmt.Errorf("%s.runtimeVersion is required because %s is not set; set runtimeVersion explicitly for SHA/custom tags",
+			fieldPath, imageField)
+	}
+	if trimmedRuntimeVersion == "" {
 		if _, err := runtimeversion.ParseImageVersion(image); err != nil {
-			return runtimeVersionRequiredError(image, fieldPath, imageField)
+			return fmt.Errorf("%s.runtimeVersion is required because %s %q does not contain a parseable semver tag; set runtimeVersion explicitly for SHA/custom tags",
+				fieldPath, imageField, image)
 		}
 		return nil
 	}
@@ -42,15 +48,6 @@ func validateAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeployme
 			fieldPath, spec.RuntimeVersion, explicitVersion, imageVersion, imageField, image)
 	}
 	return nil
-}
-
-func runtimeVersionRequiredError(image, fieldPath, imageField string) error {
-	if image == "" {
-		return fmt.Errorf("%s.runtimeVersion is required because %s is not set; set runtimeVersion explicitly for SHA/custom tags",
-			fieldPath, imageField)
-	}
-	return fmt.Errorf("%s.runtimeVersion is required because %s %q does not contain a parseable semver tag; set runtimeVersion explicitly for SHA/custom tags",
-		fieldPath, imageField, image)
 }
 
 func alphaMainContainerImage(spec *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec) string {
