@@ -5,7 +5,10 @@
 
 package runtimeversion
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestNormalize(t *testing.T) {
 	tests := []struct {
@@ -26,12 +29,12 @@ func TestNormalize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Normalize(tt.value)
+			got, err := normalize(tt.value)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("Normalize() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("normalize() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if got != tt.want {
-				t.Fatalf("Normalize() = %q, want %q", got, tt.want)
+				t.Fatalf("normalize() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -55,12 +58,12 @@ func TestParseImage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := ParseImage(tt.image)
+			got, ok := parseImage(tt.image)
 			if ok != tt.ok {
-				t.Fatalf("ParseImage() ok = %v, want %v", ok, tt.ok)
+				t.Fatalf("parseImage() ok = %v, want %v", ok, tt.ok)
 			}
 			if got != tt.want {
-				t.Fatalf("ParseImage() = %q, want %q", got, tt.want)
+				t.Fatalf("parseImage() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -71,54 +74,64 @@ func TestResolve(t *testing.T) {
 		name           string
 		runtimeVersion string
 		image          string
-		want           Resolution
-		wantErr        bool
+		want           string
+		wantErrKind    ErrorKind
 	}{
 		{
 			name:  "derives from image",
 			image: "vllm-runtime:1.1.0",
-			want:  Resolution{RuntimeVersion: "1.1", ImageVersion: "1.1", Derived: true},
+			want:  "1.1",
 		},
 		{
 			name:           "explicit wins for custom image",
 			runtimeVersion: "1.2",
 			image:          "vllm-runtime:latest",
-			want:           Resolution{RuntimeVersion: "1.2"},
+			want:           "1.2",
 		},
 		{
 			name:           "explicit matches parseable image",
 			runtimeVersion: "1.2",
 			image:          "vllm-runtime:1.2.3",
-			want:           Resolution{RuntimeVersion: "1.2", ImageVersion: "1.2"},
+			want:           "1.2",
 		},
 		{
 			name:           "explicit mismatch",
 			runtimeVersion: "1.2",
 			image:          "vllm-runtime:1.3.0",
-			wantErr:        true,
+			wantErrKind:    ErrorMismatch,
 		},
 		{
-			name:    "unresolved",
-			image:   "vllm-runtime:latest",
-			want:    Resolution{},
-			wantErr: false,
+			name:        "unresolved",
+			image:       "vllm-runtime:latest",
+			wantErrKind: ErrorUnresolved,
 		},
 		{
 			name:           "invalid explicit",
 			runtimeVersion: "latest",
 			image:          "vllm-runtime:latest",
-			wantErr:        true,
+			wantErrKind:    ErrorInvalidExplicit,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := Resolve(tt.runtimeVersion, tt.image)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("Resolve() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErrKind == "" {
+				if err != nil {
+					t.Fatalf("Resolve() error = %v, want nil", err)
+				}
+				if got != tt.want {
+					t.Fatalf("Resolve() = %q, want %q", got, tt.want)
+				}
+				return
 			}
-			if got != tt.want {
-				t.Fatalf("Resolve() = %#v, want %#v", got, tt.want)
+
+			var resolveErr *ResolutionError
+			if !errors.As(err, &resolveErr) {
+				t.Fatalf("Resolve() error = %T, want *ResolutionError", err)
+			}
+			if resolveErr.Kind != tt.wantErrKind {
+				t.Fatalf("Resolve() error kind = %q, want %q", resolveErr.Kind, tt.wantErrKind)
 			}
 		})
 	}

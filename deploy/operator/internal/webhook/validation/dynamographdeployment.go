@@ -28,7 +28,6 @@ import (
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/consts"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/dynamo"
-	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
 	internalwebhook "github.com/ai-dynamo/dynamo/deploy/operator/internal/webhook"
 	grovev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -382,7 +381,7 @@ func (v *DynamoGraphDeploymentValidator) validateService(ctx context.Context, se
 	if err != nil {
 		return warnings, err
 	}
-	if err := runtimeversion.ValidateAlphaSharedSpec(service, fieldPath); err != nil {
+	if err := validateAlphaRuntimeVersion(service, fieldPath); err != nil {
 		return nil, err
 	}
 	return warnings, nil

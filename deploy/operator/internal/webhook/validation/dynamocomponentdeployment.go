@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
-	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -51,7 +50,7 @@ func (v *DynamoComponentDeploymentValidator) Validate(ctx context.Context) (admi
 	if err != nil {
 		return warnings, err
 	}
-	if err := runtimeversion.ValidateAlphaSharedSpec(&v.deployment.Spec.DynamoComponentDeploymentSharedSpec, "spec"); err != nil {
+	if err := validateAlphaRuntimeVersion(&v.deployment.Spec.DynamoComponentDeploymentSharedSpec, "spec"); err != nil {
 		return nil, err
 	}
 
