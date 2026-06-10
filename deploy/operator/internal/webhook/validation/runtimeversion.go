@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
+	"github.com/ai-dynamo/dynamo/deploy/operator/internal/common"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
 )
 
@@ -16,7 +17,11 @@ func validateAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeployme
 	if spec == nil {
 		return nil
 	}
-	image := alphaMainContainerImage(spec)
+	container := common.AlphaMainContainer(spec)
+	var image string
+	if container != nil {
+		image = container.Image
+	}
 	imageField := "extraPodSpec.mainContainer.image"
 
 	if spec.RuntimeVersion == "" && image == "" {
@@ -46,11 +51,4 @@ func validateAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeployme
 			fieldPath, spec.RuntimeVersion, explicitVersion.String(), imageVersion.String(), imageField, image)
 	}
 	return nil
-}
-
-func alphaMainContainerImage(spec *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec) string {
-	if spec == nil || spec.ExtraPodSpec == nil || spec.ExtraPodSpec.MainContainer == nil {
-		return ""
-	}
-	return spec.ExtraPodSpec.MainContainer.Image
 }

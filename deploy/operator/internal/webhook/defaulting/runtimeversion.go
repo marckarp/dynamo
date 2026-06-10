@@ -10,6 +10,7 @@ import (
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
 	nvidiacomv1beta1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1beta1"
+	"github.com/ai-dynamo/dynamo/deploy/operator/internal/common"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
 )
 
@@ -17,7 +18,11 @@ func defaultAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeploymen
 	if spec == nil || strings.TrimSpace(spec.RuntimeVersion) != "" {
 		return false
 	}
-	version, err := runtimeversion.ParseImageVersion(alphaMainContainerImage(spec))
+	container := common.AlphaMainContainer(spec)
+	if container == nil {
+		return false
+	}
+	version, err := runtimeversion.ParseImageVersion(container.Image)
 	if err != nil {
 		return false
 	}
@@ -29,29 +34,14 @@ func defaultBetaRuntimeVersion(spec *nvidiacomv1beta1.DynamoComponentDeploymentS
 	if spec == nil || strings.TrimSpace(spec.RuntimeVersion) != "" {
 		return false
 	}
-	version, err := runtimeversion.ParseImageVersion(betaMainContainerImage(spec))
+	container := common.BetaMainContainer(spec)
+	if container == nil {
+		return false
+	}
+	version, err := runtimeversion.ParseImageVersion(container.Image)
 	if err != nil {
 		return false
 	}
 	spec.RuntimeVersion = version.String()
 	return true
-}
-
-func alphaMainContainerImage(spec *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec) string {
-	if spec == nil || spec.ExtraPodSpec == nil || spec.ExtraPodSpec.MainContainer == nil {
-		return ""
-	}
-	return spec.ExtraPodSpec.MainContainer.Image
-}
-
-func betaMainContainerImage(spec *nvidiacomv1beta1.DynamoComponentDeploymentSharedSpec) string {
-	if spec == nil || spec.PodTemplate == nil {
-		return ""
-	}
-	for i := range spec.PodTemplate.Spec.Containers {
-		if spec.PodTemplate.Spec.Containers[i].Name == nvidiacomv1beta1.MainContainerName {
-			return spec.PodTemplate.Spec.Containers[i].Image
-		}
-	}
-	return ""
 }
