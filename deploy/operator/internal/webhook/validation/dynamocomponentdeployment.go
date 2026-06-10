@@ -51,7 +51,7 @@ func (v *DynamoComponentDeploymentValidator) Validate(ctx context.Context) (admi
 		return warnings, err
 	}
 	if err := validateAlphaRuntimeVersion(&v.deployment.Spec.DynamoComponentDeploymentSharedSpec, "spec"); err != nil {
-		return nil, err
+		return warnings, err
 	}
 
 	return warnings, nil
