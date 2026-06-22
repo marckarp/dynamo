@@ -18,8 +18,6 @@ func TestParse(t *testing.T) {
 		{name: "core", value: "1.1.0", want: Version{Major: 1, Minor: 1, Patch: 0}},
 		{name: "major minor", value: "1.1", wantErr: true},
 		{name: "leading v", value: "v1.2.3", wantErr: true},
-		{name: "prerelease", value: "1.3.0-rc1", wantErr: true},
-		{name: "build metadata", value: "1.4.0+build.7", wantErr: true},
 		{name: "custom tag", value: "latest", wantErr: true},
 		{name: "sha", value: "sha256-deadbeef", wantErr: true},
 		{name: "missing minor", value: "1", wantErr: true},

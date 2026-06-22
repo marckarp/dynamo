@@ -17,8 +17,6 @@ import (
 // runtimeVersion field values.
 
 var (
-	// matches component spec runtimeVersion validation - strict semver (i.e. 1.0.0)
-	runtimeVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 	// more permissive pattern for image tags - allows leading v/V as well as suffixes (i.e. v1.0.0-rc1)
 	imageTagPattern = regexp.MustCompile(`^[vV]?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
 )
@@ -37,11 +35,7 @@ func (v Version) String() string {
 // Parse returns the runtime compatibility version for an explicit
 // runtimeVersion field value.
 func Parse(value string) (Version, error) {
-	trimmed := strings.TrimSpace(value)
-	if !runtimeVersionPattern.MatchString(trimmed) {
-		return Version{}, fmt.Errorf("must be a semantic version such as \"1.1.0\"")
-	}
-	version, err := semver.StrictNewVersion(trimmed)
+	version, err := semver.StrictNewVersion(value)
 	if err != nil {
 		return Version{}, fmt.Errorf("must be a semantic version such as \"1.1.0\"")
 	}
