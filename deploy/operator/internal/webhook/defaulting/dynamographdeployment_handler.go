@@ -19,6 +19,7 @@ package defaulting
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
@@ -73,6 +74,14 @@ func (d *DGDDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 		return nil
 	}
 
+	var oldDGD *nvidiacomv1alpha1.DynamoGraphDeployment
+	if req.Operation == admissionv1.Update && len(req.OldObject.Raw) > 0 {
+		oldDGD = &nvidiacomv1alpha1.DynamoGraphDeployment{}
+		if err := json.Unmarshal(req.OldObject.Raw, oldDGD); err != nil {
+			return fmt.Errorf("failed to decode old DGD object: %w", err)
+		}
+	}
+
 	// Default nil replicas to 1 for all services. The Replicas field is
 	// *int32 with omitempty, so users can legally omit it. Without this
 	// default the controller panics on a nil pointer dereference in
@@ -85,6 +94,15 @@ func (d *DGDDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 		}
 		if defaultAlphaRuntimeVersion(svc) {
 			logger.V(1).Info("defaulted runtimeVersion from main container image tag",
+				"service", name,
+				"runtimeVersion", svc.RuntimeVersion)
+		}
+		var oldSvc *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec
+		if oldDGD != nil {
+			oldSvc = oldDGD.Spec.Services[name]
+		}
+		if defaultAlphaRuntimeVersionForImageUpdate(oldSvc, svc) {
+			logger.V(1).Info("defaulted runtimeVersion from updated main container image tag",
 				"service", name,
 				"runtimeVersion", svc.RuntimeVersion)
 		}

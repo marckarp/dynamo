@@ -15,33 +15,94 @@ import (
 )
 
 func defaultAlphaRuntimeVersion(spec *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec) bool {
-	if spec == nil || strings.TrimSpace(spec.RuntimeVersion) != "" {
+	if spec == nil {
 		return false
 	}
 	container := common.AlphaMainContainer(spec)
 	if container == nil {
 		return false
 	}
-	version, err := runtimeversion.ParseImageVersion(container.Image)
-	if err != nil {
+	return setDefaultRuntimeVersionFromImage(&spec.RuntimeVersion, container.Image)
+}
+
+func defaultAlphaRuntimeVersionForImageUpdate(oldSpec, newSpec *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec) bool {
+	if oldSpec == nil || newSpec == nil {
 		return false
 	}
-	spec.RuntimeVersion = version.String()
-	return true
+	oldImage := ""
+	if oldContainer := common.AlphaMainContainer(oldSpec); oldContainer != nil {
+		oldImage = oldContainer.Image
+	}
+	newImage := ""
+	if newContainer := common.AlphaMainContainer(newSpec); newContainer != nil {
+		newImage = newContainer.Image
+	}
+	return setDefaultRuntimeVersionForImageUpdate(
+		oldSpec.RuntimeVersion,
+		&newSpec.RuntimeVersion,
+		oldImage,
+		newImage,
+	)
 }
 
 func defaultBetaRuntimeVersion(spec *nvidiacomv1beta1.DynamoComponentDeploymentSharedSpec) bool {
-	if spec == nil || strings.TrimSpace(spec.RuntimeVersion) != "" {
+	if spec == nil {
 		return false
 	}
 	container := common.BetaMainContainer(spec)
 	if container == nil {
 		return false
 	}
-	version, err := runtimeversion.ParseImageVersion(container.Image)
+	return setDefaultRuntimeVersionFromImage(&spec.RuntimeVersion, container.Image)
+}
+
+func defaultBetaRuntimeVersionForImageUpdate(oldSpec, newSpec *nvidiacomv1beta1.DynamoComponentDeploymentSharedSpec) bool {
+	if oldSpec == nil || newSpec == nil {
+		return false
+	}
+	oldImage := ""
+	if oldContainer := common.BetaMainContainer(oldSpec); oldContainer != nil {
+		oldImage = oldContainer.Image
+	}
+	newImage := ""
+	if newContainer := common.BetaMainContainer(newSpec); newContainer != nil {
+		newImage = newContainer.Image
+	}
+	return setDefaultRuntimeVersionForImageUpdate(
+		oldSpec.RuntimeVersion,
+		&newSpec.RuntimeVersion,
+		oldImage,
+		newImage,
+	)
+}
+
+func setDefaultRuntimeVersionFromImage(runtimeVersion *string, image string) bool {
+	if runtimeVersion == nil || strings.TrimSpace(*runtimeVersion) != "" {
+		return false
+	}
+	version, err := runtimeversion.ParseImageVersion(image)
 	if err != nil {
 		return false
 	}
-	spec.RuntimeVersion = version.String()
+	*runtimeVersion = version.String()
+	return true
+}
+
+func setDefaultRuntimeVersionForImageUpdate(oldRuntimeVersion string, newRuntimeVersion *string, oldImage, newImage string) bool {
+	if newRuntimeVersion == nil || oldRuntimeVersion != *newRuntimeVersion {
+		return false
+	}
+	if strings.TrimSpace(oldImage) == strings.TrimSpace(newImage) {
+		return false
+	}
+	version, err := runtimeversion.ParseImageVersion(newImage)
+	if err != nil {
+		return false
+	}
+	normalized := version.String()
+	if *newRuntimeVersion == normalized {
+		return false
+	}
+	*newRuntimeVersion = normalized
 	return true
 }

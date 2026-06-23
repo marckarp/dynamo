@@ -19,6 +19,7 @@ package defaulting
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	nvidiacomv1beta1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1beta1"
@@ -45,6 +46,7 @@ func NewDCDDefaulter() *DCDDefaulter {
 
 // Default implements admission.CustomDefaulter.
 // On CREATE, standalone v1beta1 DCDs default spec.name from metadata.name.
+// On CREATE/UPDATE, runtimeVersion defaults from a parseable main container image tag.
 func (d *DCDDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	logger := log.FromContext(ctx).WithName(dcdDefaultingWebhookName)
 
@@ -63,6 +65,14 @@ func (d *DCDDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 		return nil
 	}
 
+	var oldDCD *nvidiacomv1beta1.DynamoComponentDeployment
+	if req.Operation == admissionv1.Update && len(req.OldObject.Raw) > 0 {
+		oldDCD = &nvidiacomv1beta1.DynamoComponentDeployment{}
+		if err := json.Unmarshal(req.OldObject.Raw, oldDCD); err != nil {
+			return fmt.Errorf("failed to decode old DCD object: %w", err)
+		}
+	}
+
 	if req.Operation == admissionv1.Create && dcd.Spec.ComponentName == "" && dcd.Name != "" {
 		dcd.Spec.ComponentName = dcd.Name
 		logger.Info("defaulted spec.name from metadata.name",
@@ -72,6 +82,15 @@ func (d *DCDDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	}
 	if defaultBetaRuntimeVersion(&dcd.Spec.DynamoComponentDeploymentSharedSpec) {
 		logger.V(1).Info("defaulted runtimeVersion from main container image tag",
+			"name", dcd.Name,
+			"namespace", dcd.Namespace,
+			"runtimeVersion", dcd.Spec.RuntimeVersion)
+	}
+	if oldDCD != nil && defaultBetaRuntimeVersionForImageUpdate(
+		&oldDCD.Spec.DynamoComponentDeploymentSharedSpec,
+		&dcd.Spec.DynamoComponentDeploymentSharedSpec,
+	) {
+		logger.V(1).Info("defaulted runtimeVersion from updated main container image tag",
 			"name", dcd.Name,
 			"namespace", dcd.Namespace,
 			"runtimeVersion", dcd.Spec.RuntimeVersion)

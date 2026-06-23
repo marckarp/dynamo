@@ -19,12 +19,16 @@ package defaulting
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	nvidiacomv1beta1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1beta1"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 func TestDCDDefaulter_DefaultsComponentNameOnCreate(t *testing.T) {
@@ -101,6 +105,24 @@ func TestDCDDefaulter_DefaultRejectsWrongType(t *testing.T) {
 	}
 }
 
+func TestDCDDefaulter_DefaultReturnsErrorForInvalidOldObject(t *testing.T) {
+	dcd := betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0", "1.1.0")
+	ctx := admission.NewContextWithRequest(context.Background(), admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Operation: admissionv1.Update,
+			OldObject: runtime.RawExtension{Raw: []byte("{")},
+		},
+	})
+
+	err := NewDCDDefaulter().Default(ctx, dcd)
+	if err == nil {
+		t.Fatal("Default() error = nil, want old object decode error")
+	}
+	if !strings.Contains(err.Error(), "failed to decode old DCD object") {
+		t.Fatalf("Default() error = %q, want old object decode error", err.Error())
+	}
+}
+
 func TestDCDDefaulter_DefaultsRuntimeVersion(t *testing.T) {
 	tests := []struct {
 		name string
@@ -148,6 +170,103 @@ func TestDCDDefaulter_DefaultsRuntimeVersion(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDCDDefaulter_DefaultsRuntimeVersionForImageUpdate(t *testing.T) {
+	tests := []struct {
+		name   string
+		oldDCD *nvidiacomv1beta1.DynamoComponentDeployment
+		newDCD *nvidiacomv1beta1.DynamoComponentDeployment
+		want   string
+	}{
+		{
+			name:   "UPDATE refreshes runtimeVersion when only image changes",
+			oldDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0", "1.1.0"),
+			newDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0", "1.1.0"),
+			want:   "1.2.0",
+		},
+		{
+			name:   "UPDATE refreshes runtimeVersion when old image was unparseable",
+			oldDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:latest", "1.1.0"),
+			newDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0", "1.1.0"),
+			want:   "1.2.0",
+		},
+		{
+			name: "UPDATE refreshes runtimeVersion when old image was unset",
+			oldDCD: &nvidiacomv1beta1.DynamoComponentDeployment{
+				ObjectMeta: metav1.ObjectMeta{Name: "worker"},
+				Spec: nvidiacomv1beta1.DynamoComponentDeploymentSpec{
+					DynamoComponentDeploymentSharedSpec: nvidiacomv1beta1.DynamoComponentDeploymentSharedSpec{
+						ComponentName:  "worker",
+						RuntimeVersion: "1.1.0",
+					},
+				},
+			},
+			newDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0", "1.1.0"),
+			want:   "1.2.0",
+		},
+		{
+			name:   "UPDATE preserves runtimeVersion changed by user",
+			oldDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0", "1.1.0"),
+			newDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0", "1.3.0"),
+			want:   "1.3.0",
+		},
+		{
+			name:   "UPDATE preserves runtimeVersion when new image is unparseable",
+			oldDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0", "1.1.0"),
+			newDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:latest", "1.1.0"),
+			want:   "1.1.0",
+		},
+		{
+			name:   "UPDATE preserves runtimeVersion when old object is unavailable",
+			oldDCD: nil,
+			newDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0", "1.1.0"),
+			want:   "1.1.0",
+		},
+		{
+			name:   "UPDATE preserves runtimeVersion when image is unchanged",
+			oldDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0", "1.1.0"),
+			newDCD: betaDCDWithImageAndRuntimeVersion("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0", "1.1.0"),
+			want:   "1.1.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := admissionCtx(admissionv1.Update)
+			if tt.oldDCD != nil {
+				ctx = admissionCtxWithOldDCD(t, admissionv1.Update, tt.oldDCD)
+			}
+
+			if err := NewDCDDefaulter().Default(ctx, tt.newDCD); err != nil {
+				t.Fatalf("Default() unexpected error: %v", err)
+			}
+			if got := tt.newDCD.Spec.RuntimeVersion; got != tt.want {
+				t.Fatalf("runtimeVersion = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func admissionCtxWithOldDCD(t *testing.T, op admissionv1.Operation, oldObj *nvidiacomv1beta1.DynamoComponentDeployment) context.Context {
+	t.Helper()
+
+	raw, err := json.Marshal(oldObj)
+	if err != nil {
+		t.Fatalf("marshal old object: %v", err)
+	}
+	return admission.NewContextWithRequest(context.Background(), admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Operation: op,
+			OldObject: runtime.RawExtension{Raw: raw},
+		},
+	})
+}
+
+func betaDCDWithImageAndRuntimeVersion(image, runtimeVersion string) *nvidiacomv1beta1.DynamoComponentDeployment {
+	dcd := betaDCDWithImage(image)
+	dcd.Spec.RuntimeVersion = runtimeVersion
+	return dcd
 }
 
 func betaDCDWithImage(image string) *nvidiacomv1beta1.DynamoComponentDeployment {
