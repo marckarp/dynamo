@@ -33,6 +33,12 @@ func ptr(s string) *string {
 	return &s
 }
 
+func defaultRuntimeVersionForSharedValidatorTest(spec *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec) {
+	if spec != nil && spec.RuntimeVersion == "" {
+		spec.RuntimeVersion = "1.1.0"
+	}
+}
+
 func TestSharedSpecValidator_Validate(t *testing.T) {
 	var (
 		negativeReplicas = int32(-1)
@@ -463,6 +469,7 @@ func TestSharedSpecValidator_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			defaultRuntimeVersionForSharedValidatorTest(tt.spec)
 			validator := NewSharedSpecValidator(tt.spec, tt.fieldPath, tt.calculatedNamespace)
 			_, err := validator.Validate(context.Background())
 
@@ -476,6 +483,55 @@ func TestSharedSpecValidator_Validate(t *testing.T) {
 			}
 			if tt.wantErr && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
 				t.Errorf("SharedSpecValidator.Validate() error message = %v, want substring %v", err.Error(), tt.errContains)
+			}
+		})
+	}
+}
+
+func TestSharedSpecValidator_ValidateRuntimeVersion(t *testing.T) {
+	tests := []struct {
+		name        string
+		spec        *nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "accepts omitted runtimeVersion with parseable image tag",
+			spec: &nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+				ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
+					MainContainer: &corev1.Container{Image: "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0"},
+				},
+			},
+		},
+		{
+			name:        "rejects omitted runtimeVersion without image",
+			spec:        &nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{},
+			wantErr:     true,
+			errContains: "spec.runtimeVersion is required",
+		},
+		{
+			name: "rejects explicit runtimeVersion that differs from image tag",
+			spec: &nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+				RuntimeVersion: "1.1.0",
+				ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
+					MainContainer: &corev1.Container{Image: "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0"},
+				},
+			},
+			wantErr:     true,
+			errContains: "does not match image tag runtime version",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validator := NewSharedSpecValidator(tt.spec, "spec", "default-my-dgd")
+			_, err := validator.Validate(context.Background())
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("SharedSpecValidator.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("SharedSpecValidator.Validate() error = %v, want to contain %q", err, tt.errContains)
 			}
 		})
 	}
@@ -531,6 +587,7 @@ func TestSharedSpecValidator_Validate_Warnings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			defaultRuntimeVersionForSharedValidatorTest(tt.spec)
 			validator := NewSharedSpecValidator(tt.spec, tt.fieldPath, tt.calculatedNamespace)
 			warnings, err := validator.Validate(context.Background())
 
@@ -729,6 +786,7 @@ func TestSharedSpecValidator_Failover_ModeConstraints(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			defaultRuntimeVersionForSharedValidatorTest(tt.spec)
 			v := NewSharedSpecValidator(tt.spec, "spec", "default-my-dgd")
 			_, err := v.Validate(context.Background())
 

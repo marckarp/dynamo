@@ -381,9 +381,6 @@ func (v *DynamoGraphDeploymentValidator) validateService(ctx context.Context, se
 	if err != nil {
 		return warnings, err
 	}
-	if err := validateAlphaRuntimeVersion(service, fieldPath); err != nil {
-		return nil, err
-	}
 	return warnings, nil
 }
 

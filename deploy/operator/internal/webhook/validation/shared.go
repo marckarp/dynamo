@@ -154,6 +154,10 @@ func (v *SharedSpecValidator) Validate(ctx context.Context) (admission.Warnings,
 		return nil, err
 	}
 
+	if err := validateAlphaRuntimeVersion(v.spec, v.fieldPath); err != nil {
+		return nil, err
+	}
+
 	return warnings, nil
 }
 
