@@ -67,9 +67,11 @@ type DynamoComponentDeploymentSharedSpec struct {
 	// SubComponentType indicates the sub-role of this component (for example, "prefill").
 	SubComponentType string `json:"subComponentType,omitempty"`
 
-	// RuntimeVersion is the Dynamo runtime version for this component to determine the
-	// compatibility skew support with the operator version. When omitted, the defaulting webhook derives it from a
-	// parseable main container image tag such as `vllm-runtime:1.1.0` -> `1.1.0`.
+	// RuntimeVersion is the Dynamo runtime version for this component. The operator
+	// uses it to determine compatibility skew support with the operator version.
+	// When omitted, or when only the main container image tag changes on update,
+	// the defaulting webhook derives it from a parseable image tag such as
+	// `vllm-runtime:1.1.0` -> `1.1.0`.
 	// Set this explicitly when using SHA-tagged or custom runtime images.
 	// +kubebuilder:validation:Pattern=`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`
 	// +optional
