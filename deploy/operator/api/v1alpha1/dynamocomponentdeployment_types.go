@@ -69,9 +69,9 @@ type DynamoComponentDeploymentSharedSpec struct {
 
 	// RuntimeVersion is the Dynamo runtime version for this component. The operator
 	// uses it to determine compatibility skew support with the operator version.
-	// When omitted, or when only the main container image tag changes on update,
-	// the defaulting webhook derives it from a parseable image tag such as
-	// `vllm-runtime:1.1.0` -> `1.1.0`.
+	// When omitted on create, or on update when the main container image changes and the
+	// runtime version remains the same, the runtime version will be defaulted from a parseable image tag
+	// such as `vllm-runtime:1.1.0` -> `1.1.0`.
 	// Set this explicitly when using SHA-tagged or custom runtime images.
 	// +kubebuilder:validation:Pattern=`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`
 	// +optional
