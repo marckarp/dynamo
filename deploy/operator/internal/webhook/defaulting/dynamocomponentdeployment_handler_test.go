@@ -110,6 +110,11 @@ func TestDCDDefaulter_DefaultReturnsErrorForInvalidOldObject(t *testing.T) {
 	ctx := admission.NewContextWithRequest(context.Background(), admission.Request{
 		AdmissionRequest: admissionv1.AdmissionRequest{
 			Operation: admissionv1.Update,
+			Kind: metav1.GroupVersionKind{
+				Group:   nvidiacomv1beta1.DynamoComponentDeploymentGVK.Group,
+				Version: nvidiacomv1beta1.DynamoComponentDeploymentGVK.Version,
+				Kind:    nvidiacomv1beta1.DynamoComponentDeploymentGVK.Kind,
+			},
 			OldObject: runtime.RawExtension{Raw: []byte("{")},
 		},
 	})
@@ -132,19 +137,19 @@ func TestDCDDefaulter_DefaultsRuntimeVersion(t *testing.T) {
 	}{
 		{
 			name: "CREATE derives runtimeVersion from semver image tag",
-			ctx:  admissionCtx(admissionv1.Create),
+			ctx:  admissionCtx(admissionv1.Create, nvidiacomv1beta1.DynamoComponentDeploymentGVK),
 			dcd:  betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0"),
 			want: "1.1.0",
 		},
 		{
 			name: "UPDATE derives runtimeVersion",
-			ctx:  admissionCtx(admissionv1.Update),
+			ctx:  admissionCtx(admissionv1.Update, nvidiacomv1beta1.DynamoComponentDeploymentGVK),
 			dcd:  betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:v1.2.3"),
 			want: "1.2.3",
 		},
 		{
 			name: "preserves explicit runtimeVersion",
-			ctx:  admissionCtx(admissionv1.Create),
+			ctx:  admissionCtx(admissionv1.Create, nvidiacomv1beta1.DynamoComponentDeploymentGVK),
 			dcd: func() *nvidiacomv1beta1.DynamoComponentDeployment {
 				dcd := betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.2.0")
 				dcd.Spec.RuntimeVersion = "1.1.0"
@@ -154,7 +159,7 @@ func TestDCDDefaulter_DefaultsRuntimeVersion(t *testing.T) {
 		},
 		{
 			name: "does not default unparseable image tag",
-			ctx:  admissionCtx(admissionv1.Create),
+			ctx:  admissionCtx(admissionv1.Create, nvidiacomv1beta1.DynamoComponentDeploymentGVK),
 			dcd:  betaDCDWithImage("nvcr.io/nvidia/ai-dynamo/vllm-runtime:latest"),
 			want: "",
 		},
@@ -233,7 +238,7 @@ func TestDCDDefaulter_DefaultsRuntimeVersionForImageUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := admissionCtx(admissionv1.Update)
+			ctx := admissionCtx(admissionv1.Update, nvidiacomv1beta1.DynamoComponentDeploymentGVK)
 			if tt.oldDCD != nil {
 				ctx = admissionCtxWithOldDCD(t, admissionv1.Update, tt.oldDCD)
 			}
@@ -258,6 +263,11 @@ func admissionCtxWithOldDCD(t *testing.T, op admissionv1.Operation, oldObj *nvid
 	return admission.NewContextWithRequest(context.Background(), admission.Request{
 		AdmissionRequest: admissionv1.AdmissionRequest{
 			Operation: op,
+			Kind: metav1.GroupVersionKind{
+				Group:   nvidiacomv1beta1.DynamoComponentDeploymentGVK.Group,
+				Version: nvidiacomv1beta1.DynamoComponentDeploymentGVK.Version,
+				Kind:    nvidiacomv1beta1.DynamoComponentDeploymentGVK.Kind,
+			},
 			OldObject: runtime.RawExtension{Raw: raw},
 		},
 	})

@@ -202,6 +202,11 @@ func TestDGDDefaulter_DefaultReturnsErrorForInvalidOldObject(t *testing.T) {
 	ctx := admission.NewContextWithRequest(context.Background(), admission.Request{
 		AdmissionRequest: admissionv1.AdmissionRequest{
 			Operation: admissionv1.Update,
+			Kind: metav1.GroupVersionKind{
+				Group:   nvidiacomv1alpha1.DynamoGraphDeploymentGVK.Group,
+				Version: nvidiacomv1alpha1.DynamoGraphDeploymentGVK.Version,
+				Kind:    nvidiacomv1alpha1.DynamoGraphDeploymentGVK.Kind,
+			},
 			OldObject: runtime.RawExtension{Raw: []byte("{")},
 		},
 	})
