@@ -98,9 +98,15 @@ type DynamoComponentDeploymentSharedSpec struct {
 
 	// runtimeVersion is the Dynamo runtime version for this component. The operator
 	// uses it to determine compatibility skew support with the operator version.
-	// When omitted on create, or on update when the main container image changes and the
-	// runtime version remains the same, the runtime version will be defaulted from a parseable image tag
-	// such as `vllm-runtime:1.1.0` -> `1.1.0`.
+	// When omitted on create, or on update when the runtimeVersion path is unchanged
+	// and the image path changes, the operator defaults runtimeVersion from a
+	// parseable image tag. For standalone DynamoComponentDeployment objects, these
+	// paths are `.spec.runtimeVersion` and
+	// `.spec.podTemplate.spec.containers[?(@.name=="main")].image`. For
+	// DynamoGraphDeployment components, these paths are
+	// `.spec.components[*].runtimeVersion` and
+	// `.spec.components[*].podTemplate.spec.containers[?(@.name=="main")].image`.
+	// For example, `vllm-runtime:1.1.0` defaults runtimeVersion to `1.1.0`.
 	// Set this explicitly when using SHA-tagged or custom runtime images.
 	// +kubebuilder:validation:Pattern=`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`
 	// +optional
