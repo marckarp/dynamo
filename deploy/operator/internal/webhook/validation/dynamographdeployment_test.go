@@ -2271,17 +2271,6 @@ type fakeManager struct {
 func (m fakeManager) GetClient() client.Client { return m.client }
 func (m fakeManager) GetConfig() *rest.Config  { return m.config }
 
-func defaultRuntimeVersionForValidationTests(dgd *nvidiacomv1alpha1.DynamoGraphDeployment) {
-	if dgd == nil {
-		return
-	}
-	for _, service := range dgd.Spec.Services {
-		if service != nil && service.RuntimeVersion == "" {
-			service.RuntimeVersion = "1.1.0"
-		}
-	}
-}
-
 func TestDynamoGraphDeploymentValidator_KvTransferPolicyClusterTopology(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := grovev1alpha1.AddToScheme(scheme); err != nil {
