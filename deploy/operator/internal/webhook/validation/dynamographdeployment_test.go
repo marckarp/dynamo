@@ -61,13 +61,12 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                   string
-		deployment             *nvidiacomv1alpha1.DynamoGraphDeployment
-		groveEnabled           bool
-		wantErr                bool
-		errMsg                 string
-		errContains            bool
-		preserveRuntimeVersion bool
+		name         string
+		deployment   *nvidiacomv1alpha1.DynamoGraphDeployment
+		groveEnabled bool
+		wantErr      bool
+		errMsg       string
+		errContains  bool
 	}{
 		{
 			name: "valid deployment with services",
@@ -80,7 +79,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "sglang",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"main": {
-							Replicas: &validReplicas,
+							Replicas:       &validReplicas,
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -98,25 +98,6 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"main": {
 							Replicas: &validReplicas,
-						},
-					},
-				},
-			},
-			wantErr:                true,
-			errMsg:                 "spec.services[main].runtimeVersion is required because extraPodSpec.mainContainer.image is not set; set runtimeVersion explicitly for SHA/custom tags",
-			preserveRuntimeVersion: true,
-		},
-		{
-			name: "missing runtime version with custom image tag",
-			deployment: &nvidiacomv1alpha1.DynamoGraphDeployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-graph",
-					Namespace: "default",
-				},
-				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
-					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {
-							Replicas: &validReplicas,
 							ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
 								MainContainer: &corev1.Container{Image: "vllm-runtime:latest"},
 							},
@@ -124,32 +105,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 				},
 			},
-			wantErr:                true,
-			errMsg:                 `spec.services[main].runtimeVersion is required because extraPodSpec.mainContainer.image "vllm-runtime:latest" does not contain a parseable semver tag; set runtimeVersion explicitly for SHA/custom tags`,
-			preserveRuntimeVersion: true,
-		},
-		{
-			name: "runtime version disagrees with image tag",
-			deployment: &nvidiacomv1alpha1.DynamoGraphDeployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-graph",
-					Namespace: "default",
-				},
-				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
-					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {
-							Replicas:       &validReplicas,
-							RuntimeVersion: "1.1.0",
-							ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
-								MainContainer: &corev1.Container{Image: "vllm-runtime:1.2.0"},
-							},
-						},
-					},
-				},
-			},
-			wantErr:                true,
-			errMsg:                 `spec.services[main].runtimeVersion has invalid value "1.1.0": runtime version "1.1.0" does not match image tag runtime version "1.2.0" derived from extraPodSpec.mainContainer.image "vllm-runtime:1.2.0"`,
-			preserveRuntimeVersion: true,
+			wantErr: true,
+			errMsg:  "spec.services[main].runtimeVersion is required, was not parseable from the image tag \"vllm-runtime:latest\"",
 		},
 		{
 			name:         "priorityClassName is valid on Grove pathway",
@@ -163,7 +120,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					PriorityClassName: "high-priority",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"main": {
-							Replicas: &validReplicas,
+							Replicas:       &validReplicas,
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -184,7 +142,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					PriorityClassName: "high-priority",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"main": {
-							Replicas: &validReplicas,
+							Replicas:       &validReplicas,
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -204,7 +163,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					PriorityClassName: "high-priority",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"main": {
-							Replicas: &validReplicas,
+							Replicas:       &validReplicas,
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -237,7 +197,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"main": {
-							Replicas: &negativeReplicas,
+							Replicas:       &negativeReplicas,
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -259,6 +220,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 								Enabled: true,
 								Host:    "",
 							},
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -284,7 +246,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						},
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -309,7 +271,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						},
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -334,7 +296,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						},
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -356,7 +318,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						},
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -376,7 +338,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						},
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -397,7 +359,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						},
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -423,7 +385,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						},
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -439,6 +401,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"main": {
+							RuntimeVersion: "1.1.0",
 							VolumeMounts: []nvidiacomv1alpha1.VolumeMount{
 								{
 									Name:                  "data",
@@ -466,6 +429,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 								Disabled: false,
 								Size:     resource.Quantity{},
 							},
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -483,7 +447,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 					Restart: &nvidiacomv1alpha1.Restart{
 						ID: "",
@@ -502,7 +466,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 					Restart: &nvidiacomv1alpha1.Restart{
 						ID: "restart-id",
@@ -520,8 +484,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main":    {},
-						"prefill": {},
+						"main":    {RuntimeVersion: "1.1.0"},
+						"prefill": {RuntimeVersion: "1.1.0"},
 					},
 					Restart: &nvidiacomv1alpha1.Restart{
 						ID: "restart-id",
@@ -544,8 +508,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main":    {},
-						"prefill": {},
+						"main":    {RuntimeVersion: "1.1.0"},
+						"prefill": {RuntimeVersion: "1.1.0"},
 					},
 					Restart: &nvidiacomv1alpha1.Restart{
 						ID: "restart-id",
@@ -569,8 +533,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main":    {},
-						"prefill": {},
+						"main":    {RuntimeVersion: "1.1.0"},
+						"prefill": {RuntimeVersion: "1.1.0"},
 					},
 					Restart: &nvidiacomv1alpha1.Restart{
 						ID: "restart-id",
@@ -594,9 +558,9 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main":    {},
-						"prefill": {},
-						"decode":  {},
+						"main":    {RuntimeVersion: "1.1.0"},
+						"prefill": {RuntimeVersion: "1.1.0"},
+						"decode":  {RuntimeVersion: "1.1.0"},
 					},
 					Restart: &nvidiacomv1alpha1.Restart{
 						ID: "restart-id",
@@ -620,9 +584,9 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main":    {},
-						"prefill": {},
-						"decode":  {},
+						"main":    {RuntimeVersion: "1.1.0"},
+						"prefill": {RuntimeVersion: "1.1.0"},
+						"decode":  {RuntimeVersion: "1.1.0"},
 					},
 					Restart: &nvidiacomv1alpha1.Restart{
 						ID: "restart-id",
@@ -644,7 +608,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 					Restart: &nvidiacomv1alpha1.Restart{
 						ID: "restart-id",
@@ -668,7 +632,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"VeryLongServiceNameThatExceedsLimit": {},
+						"VeryLongServiceNameThatExceedsLimit": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -687,7 +651,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						// 38 chars lowercase → pcsBudget = 45-38 = 7 < 8 → clamped to 8.
 						// DGD name 16 chars > 8 → truncated to 8.
 						// Combined: 8 + 38 = 46 > 45 → error even after truncation.
-						"VeryVeryExtremelyLongServiceNameXXXXXX": {},
+						"VeryVeryExtremelyLongServiceNameXXXXXX": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -709,6 +673,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 							Multinode: &nvidiacomv1alpha1.MultinodeSpec{
 								NodeCount: 2,
 							},
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -727,7 +692,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"Frontend": {},
+						"Frontend": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -747,6 +712,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 							Multinode: &nvidiacomv1alpha1.MultinodeSpec{
 								NodeCount: 2,
 							},
+							RuntimeVersion: "1.1.0",
 						},
 					},
 				},
@@ -765,7 +731,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						// 42 character service name
-						"abcdefghijklmnopqrstuvwxyz0123456789ABCDEF": {},
+						"abcdefghijklmnopqrstuvwxyz0123456789ABCDEF": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -783,7 +749,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						// 43 character service name
-						"abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG": {},
+						"abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -805,7 +771,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"VeryLongServiceNameThatExceedsLimit": {},
+						"VeryLongServiceNameThatExceedsLimit": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -825,6 +791,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"VllmPrefillWorker": {
+							RuntimeVersion: "1.1.0",
 							Multinode: &nvidiacomv1alpha1.MultinodeSpec{
 								NodeCount: 2,
 							},
@@ -847,7 +814,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"VeryLongServiceNameThatExceedsLimit": {},
+						"VeryLongServiceNameThatExceedsLimit": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -866,7 +833,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"worker": {
-							ComponentType: consts.ComponentTypeWorker,
+							ComponentType:  consts.ComponentTypeWorker,
+							RuntimeVersion: "1.1.0",
 							GPUMemoryService: &nvidiacomv1alpha1.GPUMemoryServiceSpec{
 								Enabled: true,
 								Mode:    nvidiacomv1alpha1.GMSModeInterPod,
@@ -897,7 +865,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"worker": {
-							ComponentType: consts.ComponentTypeWorker,
+							RuntimeVersion: "1.1.0",
+							ComponentType:  consts.ComponentTypeWorker,
 							GPUMemoryService: &nvidiacomv1alpha1.GPUMemoryServiceSpec{
 								Enabled: true,
 								Mode:    nvidiacomv1alpha1.GMSModeInterPod,
@@ -923,7 +892,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"worker": {
-							ComponentType: consts.ComponentTypeWorker,
+							RuntimeVersion: "1.1.0",
+							ComponentType:  consts.ComponentTypeWorker,
 							GPUMemoryService: &nvidiacomv1alpha1.GPUMemoryServiceSpec{
 								Enabled: true,
 								Mode:    nvidiacomv1alpha1.GMSModeInterPod,
@@ -955,7 +925,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"fe": {
-							ComponentType: "frontend",
+							RuntimeVersion: "1.1.0",
+							ComponentType:  "frontend",
 							GPUMemoryService: &nvidiacomv1alpha1.GPUMemoryServiceSpec{
 								Enabled: true,
 								Mode:    nvidiacomv1alpha1.GMSModeInterPod,
@@ -986,7 +957,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"worker": {
-							ComponentType: consts.ComponentTypeWorker,
+							RuntimeVersion: "1.1.0",
+							ComponentType:  consts.ComponentTypeWorker,
 							GPUMemoryService: &nvidiacomv1alpha1.GPUMemoryServiceSpec{
 								Enabled: true,
 								Mode:    nvidiacomv1alpha1.GMSModeInterPod,
@@ -1019,7 +991,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"worker": {
-							ComponentType: consts.ComponentTypeWorker,
+							RuntimeVersion: "1.1.0",
+							ComponentType:  consts.ComponentTypeWorker,
 							GPUMemoryService: &nvidiacomv1alpha1.GPUMemoryServiceSpec{
 								Enabled: true,
 								Mode:    nvidiacomv1alpha1.GMSModeInterPod,
@@ -1052,7 +1025,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "sglang",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"worker": {
-							ComponentType: consts.ComponentTypeWorker,
+							RuntimeVersion: "1.1.0",
+							ComponentType:  consts.ComponentTypeWorker,
 							GPUMemoryService: &nvidiacomv1alpha1.GPUMemoryServiceSpec{
 								Enabled: true,
 								Mode:    nvidiacomv1alpha1.GMSModeInterPod,
@@ -1087,7 +1061,8 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					// accept a deployment whose engine may not speak vLLM.
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"worker": {
-							ComponentType: consts.ComponentTypeWorker,
+							RuntimeVersion: "1.1.0",
+							ComponentType:  consts.ComponentTypeWorker,
 							GPUMemoryService: &nvidiacomv1alpha1.GPUMemoryServiceSpec{
 								Enabled: true,
 								Mode:    nvidiacomv1alpha1.GMSModeInterPod,
@@ -1118,6 +1093,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"worker": {
+							RuntimeVersion: "1.1.0",
 							Failover: &nvidiacomv1alpha1.FailoverSpec{
 								Enabled: false,
 							},
@@ -1140,7 +1116,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1158,7 +1134,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1176,7 +1152,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1194,7 +1170,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1210,7 +1186,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1228,7 +1204,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1246,7 +1222,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1264,7 +1240,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1282,7 +1258,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1299,7 +1275,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1322,11 +1298,13 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("block"),
 							},
 						},
 						"Frontend": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("zone"),
 							},
@@ -1352,6 +1330,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("rack"),
 							},
@@ -1380,7 +1359,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 						PackDomain:      nvidiacomv1alpha1.TopologyDomain("zone"),
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"Worker": {},
+						"Worker": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1403,6 +1382,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("rack"),
 							},
@@ -1431,6 +1411,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("rack"),
 							},
@@ -1457,11 +1438,12 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("rack"),
 							},
 						},
-						"Frontend": {},
+						"Frontend": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1480,6 +1462,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("rack"),
 							},
@@ -1507,6 +1490,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("rack"),
 							},
@@ -1535,6 +1519,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion:     "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{},
 						},
 					},
@@ -1561,6 +1546,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("INVALID!"),
 							},
@@ -1589,6 +1575,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("host"),
 							},
@@ -1614,11 +1601,13 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("rack"),
 							},
 						},
 						"Frontend": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("zone"),
 							},
@@ -1644,6 +1633,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 					},
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 						"Worker": {
+							RuntimeVersion: "1.1.0",
 							TopologyConstraint: &nvidiacomv1alpha1.TopologyConstraint{
 								PackDomain: nvidiacomv1alpha1.TopologyDomain("rack"),
 							},
@@ -1665,7 +1655,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1684,7 +1674,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"main": {},
+						"main": {RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -1703,7 +1693,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1726,7 +1716,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1750,7 +1740,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1773,7 +1763,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1797,7 +1787,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1820,7 +1810,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1845,7 +1835,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1871,7 +1861,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1895,7 +1885,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1920,7 +1910,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1944,7 +1934,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1968,7 +1958,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -1992,7 +1982,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2021,7 +2011,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2044,7 +2034,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2068,7 +2058,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2093,7 +2083,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2116,7 +2106,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2140,7 +2130,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2165,7 +2155,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2191,7 +2181,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{
 						KvTransferPolicy: &nvidiacomv1alpha1.KvTransferPolicy{
@@ -2217,7 +2207,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 					Experimental: &nvidiacomv1alpha1.DynamoGraphDeploymentExperimentalSpec{},
 				},
@@ -2234,7 +2224,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				Spec: nvidiacomv1alpha1.DynamoGraphDeploymentSpec{
 					BackendFramework: "vllm",
 					Services: map[string]*nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						"frontend": {ComponentType: consts.ComponentTypeFrontend},
+						"frontend": {ComponentType: consts.ComponentTypeFrontend, RuntimeVersion: "1.1.0"},
 					},
 				},
 			},
@@ -2244,9 +2234,6 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if !tt.preserveRuntimeVersion {
-				defaultRuntimeVersionForValidationTests(tt.deployment)
-			}
 			client := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(clusterTopology).Build()
 			validator := NewDynamoGraphDeploymentValidator(tt.deployment, &fakeManager{client: client, config: &rest.Config{}}, tt.groveEnabled)
 			_, err := validator.Validate(context.Background())

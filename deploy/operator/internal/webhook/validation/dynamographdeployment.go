@@ -377,11 +377,7 @@ func (v *DynamoGraphDeploymentValidator) validateService(ctx context.Context, se
 		sharedValidator = NewSharedSpecValidator(service, fieldPath, calculatedNamespace)
 	}
 
-	warnings, err := sharedValidator.Validate(ctx)
-	if err != nil {
-		return warnings, err
-	}
-	return warnings, nil
+	return sharedValidator.Validate(ctx)
 }
 
 // validateServiceNameLength validates that the service name combined with the

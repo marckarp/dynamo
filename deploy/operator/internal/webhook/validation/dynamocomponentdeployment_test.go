@@ -54,44 +54,6 @@ func TestDynamoComponentDeploymentValidator_Validate(t *testing.T) {
 					BackendFramework: "sglang",
 				},
 			},
-			wantErr: false,
-		},
-		{
-			name: "valid deployment derives runtime version from image",
-			deployment: &nvidiacomv1alpha1.DynamoComponentDeployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-deployment",
-					Namespace: "default",
-				},
-				Spec: nvidiacomv1alpha1.DynamoComponentDeploymentSpec{
-					DynamoComponentDeploymentSharedSpec: nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						Replicas: &validReplicas,
-						ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
-							MainContainer: &corev1.Container{Image: "vllm-runtime:1.1.0"},
-						},
-					},
-					BackendFramework: "sglang",
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "missing runtime version with custom image tag",
-			deployment: &nvidiacomv1alpha1.DynamoComponentDeployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-deployment",
-					Namespace: "default",
-				},
-				Spec: nvidiacomv1alpha1.DynamoComponentDeploymentSpec{
-					DynamoComponentDeploymentSharedSpec: nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
-						ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
-							MainContainer: &corev1.Container{Image: "vllm-runtime:latest"},
-						},
-					},
-				},
-			},
-			wantErr: true,
-			errMsg:  `spec.runtimeVersion is required because extraPodSpec.mainContainer.image "vllm-runtime:latest" does not contain a parseable semver tag; set runtimeVersion explicitly for SHA/custom tags`,
 		},
 		{
 			name: "runtime version disagrees with image tag",

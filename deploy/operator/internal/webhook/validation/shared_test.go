@@ -496,12 +496,14 @@ func TestSharedSpecValidator_ValidateRuntimeVersion(t *testing.T) {
 		errContains string
 	}{
 		{
-			name: "accepts omitted runtimeVersion with parseable image tag",
+			name: "rejects omitted runtimeVersion with parseable image tag",
 			spec: &nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
 				ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
 					MainContainer: &corev1.Container{Image: "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0"},
 				},
 			},
+			wantErr:     true,
+			errContains: "spec.runtimeVersion is required",
 		},
 		{
 			name:        "rejects omitted runtimeVersion without image",
@@ -519,6 +521,24 @@ func TestSharedSpecValidator_ValidateRuntimeVersion(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "does not match image tag runtime version",
+		},
+		{
+			name: "accepts explicit runtimeVersion that matches image tag",
+			spec: &nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+				RuntimeVersion: "1.1.0",
+				ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
+					MainContainer: &corev1.Container{Image: "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.0"},
+				},
+			},
+		},
+		{
+			name: "accepts explicit runtimeVersion for non-parseable image tag",
+			spec: &nvidiacomv1alpha1.DynamoComponentDeploymentSharedSpec{
+				RuntimeVersion: "1.1.0",
+				ExtraPodSpec: &nvidiacomv1alpha1.ExtraPodSpec{
+					MainContainer: &corev1.Container{Image: "nvcr.io/nvidia/ai-dynamo/vllm-runtime:abcdef"},
+				},
+			},
 		},
 	}
 

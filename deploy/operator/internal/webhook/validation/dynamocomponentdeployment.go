@@ -46,12 +46,7 @@ func (v *DynamoComponentDeploymentValidator) Validate(ctx context.Context) (admi
 	calculatedNamespace := v.deployment.GetDynamoNamespace()
 	sharedValidator := NewSharedSpecValidator(&v.deployment.Spec.DynamoComponentDeploymentSharedSpec, "spec", calculatedNamespace)
 
-	warnings, err := sharedValidator.Validate(ctx)
-	if err != nil {
-		return warnings, err
-	}
-
-	return warnings, nil
+	return sharedValidator.Validate(ctx)
 }
 
 // ValidateUpdate performs stateful validation comparing old and new DynamoComponentDeployment.

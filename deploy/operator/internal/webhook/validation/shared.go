@@ -26,9 +26,11 @@ import (
 
 	nvidiacomv1alpha1 "github.com/ai-dynamo/dynamo/deploy/operator/api/v1alpha1"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/checkpoint"
+	"github.com/ai-dynamo/dynamo/deploy/operator/internal/common"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/consts"
 	controllercommon "github.com/ai-dynamo/dynamo/deploy/operator/internal/controller_common"
 	"github.com/ai-dynamo/dynamo/deploy/operator/internal/dynamo/epp"
+	"github.com/ai-dynamo/dynamo/deploy/operator/internal/runtimeversion"
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -154,7 +156,7 @@ func (v *SharedSpecValidator) Validate(ctx context.Context) (admission.Warnings,
 		return nil, err
 	}
 
-	if err := validateAlphaRuntimeVersion(v.spec, v.fieldPath); err != nil {
+	if err := v.validateRuntimeVersion(); err != nil {
 		return nil, err
 	}
 
@@ -507,6 +509,36 @@ func (v *SharedSpecValidator) validateServiceAnnotations() error {
 			return fmt.Errorf("%s.annotations[%s] has invalid value %q: must be \"mp\" or \"ray\"",
 				v.fieldPath, consts.KubeAnnotationVLLMDistributedExecutorBackend, value)
 		}
+	}
+	return nil
+}
+
+func (v *SharedSpecValidator) validateRuntimeVersion() error {
+	container := common.AlphaMainContainer(v.spec)
+	var image string
+	if container != nil {
+		image = container.Image
+	}
+	imageField := "extraPodSpec.mainContainer.image"
+
+	if v.spec.RuntimeVersion == "" {
+		return fmt.Errorf("%s.runtimeVersion is required, was not parseable from the image tag %q",
+			v.fieldPath, image)
+	}
+
+	explicitVersion, err := runtimeversion.Parse(v.spec.RuntimeVersion)
+	if err != nil {
+		return fmt.Errorf("%s.runtimeVersion has invalid value %q: must be a semantic version such as \"1.1.0\"",
+			v.fieldPath, v.spec.RuntimeVersion)
+	}
+
+	imageVersion, err := runtimeversion.ParseImageVersion(image)
+	if err != nil {
+		return nil
+	}
+	if explicitVersion != imageVersion {
+		return fmt.Errorf("%s.runtimeVersion has invalid value %q: runtime version %q does not match image tag runtime version %q derived from %s %q",
+			v.fieldPath, v.spec.RuntimeVersion, explicitVersion.String(), imageVersion.String(), imageField, image)
 	}
 	return nil
 }
