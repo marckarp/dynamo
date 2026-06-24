@@ -106,7 +106,7 @@ func TestDynamoGraphDeploymentValidator_Validate(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "spec.services[main].runtimeVersion is required, was not parseable from the image tag \"vllm-runtime:latest\"",
+			errMsg:  "spec.services[main].runtimeVersion is required as it was not parseable from the image tag \"vllm-runtime:latest\"; set runtimeVersion explicitly when using custom runtime images",
 		},
 		{
 			name:         "priorityClassName is valid on Grove pathway",

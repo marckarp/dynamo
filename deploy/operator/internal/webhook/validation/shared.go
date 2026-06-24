@@ -522,7 +522,7 @@ func (v *SharedSpecValidator) validateRuntimeVersion() error {
 	imageField := "extraPodSpec.mainContainer.image"
 
 	if v.spec.RuntimeVersion == "" {
-		return fmt.Errorf("%s.runtimeVersion is required, was not parseable from the image tag %q",
+		return fmt.Errorf("%s.runtimeVersion is required as it was not parseable from the image tag %q; set runtimeVersion explicitly when using custom runtime images",
 			v.fieldPath, image)
 	}
 
