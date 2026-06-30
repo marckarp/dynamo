@@ -102,12 +102,16 @@ impl VllmRenderClient {
     ///
     /// The body is sent unchanged so vLLM remains responsible for validating
     /// engine-specific request fields and applying the chat template.
-    pub async fn render_chat(&self, request_body: &[u8]) -> Result<Vec<u32>, VllmRenderError> {
+    pub async fn render_chat(
+        &self,
+        request_body: bytes::Bytes,
+    ) -> Result<Vec<u32>, VllmRenderError> {
         let response = self
             .client
             .post(self.endpoint.clone())
             .header(CONTENT_TYPE, "application/json")
-            .body(request_body.to_vec())
+            // `Bytes` -> reqwest `Body` is zero-copy (no `to_vec`).
+            .body(request_body)
             .send()
             .await
             .map_err(|source| self.classify_transport_error(source))?;
@@ -206,7 +210,10 @@ mod tests {
         let request =
             br#"{"model":"Qwen/Qwen3-0.6B","messages":[{"role":"user","content":"hello"}]}"#;
 
-        let token_ids = client.render_chat(request).await.unwrap();
+        let token_ids = client
+            .render_chat(Bytes::from_static(request))
+            .await
+            .unwrap();
 
         assert_eq!(token_ids, vec![1, 2, 3]);
         assert_eq!(body_rx.recv().await.unwrap().as_ref(), request);
@@ -225,7 +232,7 @@ mod tests {
         let client =
             VllmRenderClient::new(&format!("{base_url}/gateway/vllm/"), TEST_TIMEOUT).unwrap();
 
-        let token_ids = client.render_chat(b"{}").await.unwrap();
+        let token_ids = client.render_chat(Bytes::from_static(b"{}")).await.unwrap();
 
         assert_eq!(token_ids, vec![4, 5]);
         server.abort();
@@ -244,7 +251,10 @@ mod tests {
         let timeout = Duration::from_millis(10);
         let client = VllmRenderClient::new(&base_url, timeout).unwrap();
 
-        let error = client.render_chat(b"{}").await.unwrap_err();
+        let error = client
+            .render_chat(Bytes::from_static(b"{}"))
+            .await
+            .unwrap_err();
 
         assert!(matches!(
             error,
@@ -263,7 +273,10 @@ mod tests {
         drop(listener);
         let client = VllmRenderClient::new(&format!("http://{address}"), TEST_TIMEOUT).unwrap();
 
-        let error = client.render_chat(b"{}").await.unwrap_err();
+        let error = client
+            .render_chat(Bytes::from_static(b"{}"))
+            .await
+            .unwrap_err();
 
         assert!(matches!(error, VllmRenderError::Unavailable { .. }));
     }
@@ -286,7 +299,10 @@ mod tests {
         let (base_url, server) = spawn_server(router).await;
         let client = VllmRenderClient::new(&base_url, TEST_TIMEOUT).unwrap();
 
-        let error = client.render_chat(b"{}").await.unwrap_err();
+        let error = client
+            .render_chat(Bytes::from_static(b"{}"))
+            .await
+            .unwrap_err();
 
         match error {
             VllmRenderError::UpstreamStatus { status, body } => {
@@ -307,7 +323,10 @@ mod tests {
         let (base_url, server) = spawn_server(router).await;
         let client = VllmRenderClient::new(&base_url, TEST_TIMEOUT).unwrap();
 
-        let error = client.render_chat(b"{}").await.unwrap_err();
+        let error = client
+            .render_chat(Bytes::from_static(b"{}"))
+            .await
+            .unwrap_err();
 
         assert!(matches!(error, VllmRenderError::InvalidResponse { .. }));
         server.abort();
