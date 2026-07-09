@@ -17,11 +17,10 @@
 //! flat `spec.selector` map, so they never reach this watch or parser.
 
 use std::collections::BTreeMap;
-use std::time::Duration;
 
 use anyhow::Result;
 use kube::core::{ApiResource, DynamicObject, GroupVersionKind};
-use kube::runtime::watcher;
+use kube::runtime::{WatchStreamExt, watcher};
 use kube::{Api, Client};
 use tokio::sync::watch;
 
@@ -72,14 +71,13 @@ pub async fn spawn_pool_watch(
         // Crucially, deletions that happen while the watch is disconnected are
         // reported via `None` on the next relist (not a `Delete` event), so
         // stale `PoolState` can never survive a reconnect.
-        let stream = watcher::watch_object(api, &name);
+        let stream = watcher::watch_object(api, &name).default_backoff();
         tokio::pin!(stream);
         loop {
             match stream.next().await {
                 Some(Ok(obj)) => publish_pool_state(obj, &name, &tx),
                 Some(Err(e)) => {
                     tracing::warn!(error = %e, pool = %name, "InferencePool watch error; retrying");
-                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 None => {
                     tracing::warn!(pool = %name, "InferencePool watch stream ended");
@@ -100,69 +98,97 @@ fn publish_pool_state(
     name: &str,
     tx: &watch::Sender<Option<PoolState>>,
 ) {
-    let state = obj.as_ref().and_then(|o| parse_pool_state(&o.data));
-    match (&obj, &state) {
-        (Some(_), Some(s)) => {
-            tracing::info!(
-                pool = %name,
-                target_port = s.target_port,
-                labels = ?s.match_labels,
-                "InferencePool resolved"
-            );
-        }
-        (Some(_), None) => {
-            tracing::warn!(
-                pool = %name,
-                "InferencePool present but unsupported (missing matchLabels/targetPort, or not exactly one targetPort); clearing discovery state"
-            );
-        }
-        (None, _) => {
+    let state = match &obj {
+        None => {
             tracing::warn!(pool = %name, "InferencePool absent; clearing discovery state");
+            None
         }
-    }
+        Some(o) => match parse_pool_state(&o.data) {
+            Ok(s) => {
+                tracing::info!(
+                    pool = %name,
+                    target_port = s.target_port,
+                    labels = ?s.match_labels,
+                    "InferencePool resolved"
+                );
+                Some(s)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    pool = %name,
+                    reason = %e,
+                    "InferencePool present but unsupported; clearing discovery state"
+                );
+                None
+            }
+        },
+    };
     let _ = tx.send(state);
 }
 
-/// Extract a [`PoolState`] from an `InferencePool` `spec` JSON value. Returns
-/// `None` if the selector is empty/missing, no target port can be resolved, or
-/// the pool declares anything other than exactly one target port.
-/// Pure function — unit-testable without a cluster.
-fn parse_pool_state(data: &serde_json::Value) -> Option<PoolState> {
-    let spec = data.get("spec")?;
+/// Why an observed `InferencePool` spec can't be used for discovery. Each
+/// variant names a specific rejection so the watcher can log *why* the pool was
+/// cleared instead of one catch-all warning.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+enum PoolSpecError {
+    #[error("spec is missing")]
+    MissingSpec,
+    #[error("spec.selector.matchLabels is missing or not a string map")]
+    MissingSelector,
+    #[error("spec.selector.matchLabels is empty (would select every pod in the namespace)")]
+    EmptySelector,
+    #[error("spec.targetPorts is missing or not an array")]
+    MissingTargetPorts,
+    #[error("expected exactly one targetPort, found {found}")]
+    NotExactlyOneTargetPort { found: usize },
+    #[error("targetPorts[0].number is missing or not an integer")]
+    MissingTargetPortNumber,
+    #[error("targetPort {0} is outside the valid 1-65535 range")]
+    TargetPortOutOfRange(u64),
+}
 
-    let labels_obj = spec.get("selector")?.get("matchLabels")?.as_object()?;
-    let mut match_labels = BTreeMap::new();
-    for (k, v) in labels_obj {
-        if let Some(s) = v.as_str() {
-            match_labels.insert(k.clone(), s.to_string());
-        }
-    }
+/// Extract a [`PoolState`] from an `InferencePool` `spec`, or a [`PoolSpecError`]
+/// naming why it is unusable. Pure function — unit-testable without a cluster.
+fn parse_pool_state(data: &serde_json::Value) -> Result<PoolState, PoolSpecError> {
+    let spec = data.get("spec").ok_or(PoolSpecError::MissingSpec)?;
+
+    let labels_obj = spec
+        .get("selector")
+        .and_then(|s| s.get("matchLabels"))
+        .and_then(|m| m.as_object())
+        .ok_or(PoolSpecError::MissingSelector)?;
+    let match_labels: BTreeMap<String, String> = labels_obj
+        .iter()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+        .collect();
     // An empty selector would match every pod in the namespace; refuse it.
     if match_labels.is_empty() {
-        return None;
+        return Err(PoolSpecError::EmptySelector);
     }
 
-    // v1: spec.targetPorts[].number. Exactly one target port is required.
-    // Discovery keys each worker by `worker_id = hash_pod_name(pod_name)` (see
-    // pod_discovery.rs), so a pod maps to a single endpoint. GAIE, by contrast,
-    // treats every (podIP, port) as a distinct endpoint, so a multi-port pool
-    // would collapse into colliding worker IDs and lose endpoints. Reject it
-    // instead of silently keeping the first port; a live update into a multi-port
-    // shape returns `None` here and clears discovery state.
-    let target_ports = spec.get("targetPorts").and_then(|tp| tp.as_array())?;
+    // v1 `spec.targetPorts[].number`; exactly one is required. Multi-port pools
+    // (e.g. for DP-aware routing) aren't in scope yet: a worker is keyed by
+    // `hash_pod_name` → a single endpoint, so multiple ports would collide.
+    // Reject rather than silently pick the first.
+    let target_ports = spec
+        .get("targetPorts")
+        .and_then(|tp| tp.as_array())
+        .ok_or(PoolSpecError::MissingTargetPorts)?;
     if target_ports.len() != 1 {
-        return None;
+        return Err(PoolSpecError::NotExactlyOneTargetPort {
+            found: target_ports.len(),
+        });
     }
-    let target_port_u64 = target_ports
-        .first()
-        .and_then(|p| p.get("number"))
-        .and_then(|n| n.as_u64())?;
-    let target_port = u16::try_from(target_port_u64).ok()?;
-    if target_port == 0 {
-        return None;
-    }
+    let target_port_u64 = target_ports[0]
+        .get("number")
+        .and_then(|n| n.as_u64())
+        .ok_or(PoolSpecError::MissingTargetPortNumber)?;
+    let target_port = match u16::try_from(target_port_u64) {
+        Ok(p) if p != 0 => p,
+        _ => return Err(PoolSpecError::TargetPortOutOfRange(target_port_u64)),
+    };
 
-    Some(PoolState {
+    Ok(PoolState {
         match_labels,
         target_port,
     })
@@ -200,6 +226,14 @@ mod tests {
     }
 
     #[test]
+    fn missing_spec_is_rejected() {
+        assert_eq!(
+            parse_pool_state(&json!({})),
+            Err(PoolSpecError::MissingSpec)
+        );
+    }
+
+    #[test]
     fn v1alpha2_target_port_number_is_rejected() {
         // Legacy `spec.targetPortNumber` is not part of the v1 contract.
         let data = json!({
@@ -208,7 +242,10 @@ mod tests {
                 "targetPortNumber": 8000
             }
         });
-        assert!(parse_pool_state(&data).is_none());
+        assert_eq!(
+            parse_pool_state(&data),
+            Err(PoolSpecError::MissingTargetPorts)
+        );
     }
 
     #[test]
@@ -216,7 +253,15 @@ mod tests {
         let data = json!({
             "spec": {"selector": {"matchLabels": {}}, "targetPorts": [{"number": 8000}]}
         });
-        assert!(parse_pool_state(&data).is_none());
+        assert_eq!(parse_pool_state(&data), Err(PoolSpecError::EmptySelector));
+    }
+
+    #[test]
+    fn missing_selector_is_rejected() {
+        let data = json!({
+            "spec": {"targetPorts": [{"number": 8000}]}
+        });
+        assert_eq!(parse_pool_state(&data), Err(PoolSpecError::MissingSelector));
     }
 
     #[test]
@@ -224,20 +269,26 @@ mod tests {
         let data = json!({
             "spec": {"selector": {"matchLabels": {"app": "x"}}}
         });
-        assert!(parse_pool_state(&data).is_none());
+        assert_eq!(
+            parse_pool_state(&data),
+            Err(PoolSpecError::MissingTargetPorts)
+        );
     }
 
     #[test]
     fn multi_port_pool_is_rejected() {
-        // Workers are keyed by hash(pod_name), so a pod maps to one endpoint.
-        // A multi-port pool would collapse into colliding worker IDs; reject it.
+        // Workers are keyed by hash(pod_name), so a pod maps to one endpoint;
+        // multi-port pools (DP-aware routing) aren't in scope yet.
         let data = json!({
             "spec": {
                 "selector": {"matchLabels": {"app": "vllm-qwen"}},
                 "targetPorts": [{"number": 8000}, {"number": 8001}]
             }
         });
-        assert!(parse_pool_state(&data).is_none());
+        assert_eq!(
+            parse_pool_state(&data),
+            Err(PoolSpecError::NotExactlyOneTargetPort { found: 2 })
+        );
     }
 
     #[test]
@@ -248,6 +299,39 @@ mod tests {
                 "targetPorts": []
             }
         });
-        assert!(parse_pool_state(&data).is_none());
+        assert_eq!(
+            parse_pool_state(&data),
+            Err(PoolSpecError::NotExactlyOneTargetPort { found: 0 })
+        );
+    }
+
+    #[test]
+    fn missing_target_port_number_is_rejected() {
+        let data = json!({
+            "spec": {
+                "selector": {"matchLabels": {"app": "vllm-qwen"}},
+                "targetPorts": [{"protocol": "TCP"}]
+            }
+        });
+        assert_eq!(
+            parse_pool_state(&data),
+            Err(PoolSpecError::MissingTargetPortNumber)
+        );
+    }
+
+    #[test]
+    fn out_of_range_or_zero_target_port_is_rejected() {
+        for port in [0u64, 70_000u64] {
+            let data = json!({
+                "spec": {
+                    "selector": {"matchLabels": {"app": "vllm-qwen"}},
+                    "targetPorts": [{"number": port}]
+                }
+            });
+            assert_eq!(
+                parse_pool_state(&data),
+                Err(PoolSpecError::TargetPortOutOfRange(port))
+            );
+        }
     }
 }

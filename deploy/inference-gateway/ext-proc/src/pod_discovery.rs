@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Pod discovery for standalone (raw-vLLM) mode, driven by the `InferencePool`.
+//! Pod discovery for standalone (raw inference-engine) mode, driven by the `InferencePool`.
 //!
 //! The pod label selector and HTTP target port come from the GAIE
 //! [`InferencePool`](crate::inference_pool) this EPP backs — the same object the
@@ -18,9 +18,9 @@
 //! whatever consumes them (the topology adapter and selector catalog).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use anyhow::Result;
 use dynamo_runtime::discovery::hash_pod_name;
@@ -30,7 +30,7 @@ use tokio::sync::watch;
 use crate::epp_standalone_config::EppStandaloneConfig;
 use crate::inference_pool::{PoolState, spawn_pool_watch};
 
-/// A discovered, `Ready` raw vLLM worker normalized for selector registration.
+/// A discovered, `Ready` raw inference engine worker normalized for selector registration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawWorker {
     /// Stable hash of the pod name; the selector catalog key.
@@ -41,7 +41,7 @@ pub struct RawWorker {
     pub pod_ip: String,
     /// OpenAI HTTP inference endpoint, `http://<ip>:<target_port>`.
     pub http_endpoint: String,
-    /// vLLM KV-event ZMQ PUB endpoint, `tcp://<ip>:<kv_event_port>`.
+    /// Inference engine KV-event ZMQ PUB endpoint, `tcp://<ip>:<kv_event_port>`.
     pub kv_events_endpoint: String,
     /// Optional ZMQ REQ endpoint for live-stream gap replay.
     pub replay_endpoint: Option<String>,
@@ -63,7 +63,7 @@ struct Snapshot {
     endpoints: HashMap<u64, String>,
 }
 
-/// Lock-free view over the `Ready` raw vLLM pods selected by the EPP's
+/// Lock-free view over the `Ready` raw inference engine pods selected by the EPP's
 /// `InferencePool`. Reads never touch the Kubernetes API; they read a cached
 /// [`Snapshot`] that a background task rebuilds on pod/pool changes.
 #[derive(Clone)]
@@ -74,11 +74,14 @@ pub struct PodDiscovery {
 
 impl PodDiscovery {
     /// Start the InferencePool watch and a namespace-wide pod reflector. Returns
-    /// a readiness flag that flips once the initial pod LIST has populated the
-    /// store. Pods become selectable only once the pool has also resolved.
+    /// a *live* readiness flag that is `true` only while the pod cache has synced
+    /// (initial LIST done) **and** the `InferencePool` is resolved. It clears back
+    /// to `false` if the pool is later deleted or edited into an unsupported spec
+    /// (so nothing is routable), and recovers when both are healthy again — this
+    /// is the gRPC health SERVING signal, so it must not latch true.
     pub async fn spawn(cfg: &EppStandaloneConfig) -> Result<(Self, Arc<AtomicBool>)> {
         use futures::StreamExt;
-        use kube::{Api, Client, runtime::reflector, runtime::watcher};
+        use kube::{Api, Client, runtime::WatchStreamExt, runtime::reflector, runtime::watcher};
 
         let client = Client::try_default().await?;
         let namespace = cfg.namespace.clone();
@@ -96,17 +99,23 @@ impl PodDiscovery {
         let writer = reflector::store::Writer::default();
         let store = writer.as_reader();
         let ready = Arc::new(AtomicBool::new(false));
-        let reflect = reflector::reflector(writer, watcher(pods, watcher::Config::default()));
+        // `default_backoff()` lets the watcher own retry/backoff (exponential +
+        // jitter, capped) on watch errors; the error arm below just logs, so
+        // persistent failures (e.g. RBAC, API-server hiccup) don't hot-loop.
+        let reflect = reflector::reflector(
+            writer,
+            watcher(pods, watcher::Config::default()).default_backoff(),
+        );
 
         let (changes_tx, changes_rx) = watch::channel(0u64);
 
         let kv_event_port = cfg.kv_event_port;
         let replay_port = cfg.replay_port;
 
-        // Cached snapshot of the ready, pool-selected workers. Rebuilt by the two
-        // tasks below (before they bump the change generation), so any consumer
-        // that wakes on a generation bump observes a snapshot that is already
-        // consistent with the store/pool that triggered it.
+        // Cached snapshot of the ready, pool-selected workers. Rebuilt by the task
+        // below (before it bumps the change generation), so any consumer that wakes
+        // on a generation bump observes a snapshot already consistent with the
+        // store/pool that triggered it.
         let (snapshot_tx, snapshot_rx) = watch::channel(Arc::new(build_snapshot(
             &store,
             pool_rx.borrow().as_ref(),
@@ -121,72 +130,66 @@ impl PodDiscovery {
             "Starting namespace pod reflector for standalone mode"
         );
 
-        // Pod reflector stream -> rebuild snapshot, then bump the change generation.
-        let changes_for_pods = changes_tx.clone();
-        let snapshot_for_pods = snapshot_tx.clone();
-        let store_for_pods = store.clone();
-        let pool_for_pods = pool_rx.clone();
+        // A single task owns both wake sources so snapshot builds are serialized:
+        // on either a pod event or a pool change it rebuilds once from the latest
+        // store + latest pool and publishes in order. Two independent producers
+        // could each read state, build, and push to the watch channel in arbitrary
+        // order, letting a stale build overwrite a fresher one (notably during a
+        // pool relist).
+        let store_task = store.clone();
+        let ready_task = ready.clone();
         tokio::spawn(async move {
+            let mut pool_rx = pool_rx;
             tokio::pin!(reflect);
             let mut generation = 0u64;
-            while reflect.next().await.is_some() {
-                let snap = build_snapshot(
-                    &store_for_pods,
-                    pool_for_pods.borrow().as_ref(),
-                    kv_event_port,
-                    replay_port,
-                );
-                let _ = snapshot_for_pods.send(Arc::new(snap));
-                generation = generation.wrapping_add(1);
-                let _ = changes_for_pods.send(generation);
-            }
-            tracing::warn!("Raw-vLLM pod reflector stream ended unexpectedly");
-        });
-
-        // Pool changes also drive reconciliation (membership/target port may move).
-        let mut pool_rx_for_changes = pool_rx.clone();
-        let store_for_pool = store.clone();
-        let snapshot_for_pool = snapshot_tx;
-        tokio::spawn(async move {
-            let mut generation = u64::MAX / 2; // distinct space from pod bumps
-            while pool_rx_for_changes.changed().await.is_ok() {
-                let snap = build_snapshot(
-                    &store_for_pool,
-                    pool_rx_for_changes.borrow().as_ref(),
-                    kv_event_port,
-                    replay_port,
-                );
-                let _ = snapshot_for_pool.send(Arc::new(snap));
+            // The pod cache is "synced" once the reflector's initial LIST lands
+            // (InitDone); readiness stays gated on this AND pool presence below.
+            let mut pod_synced = false;
+            loop {
+                tokio::select! {
+                    ev = reflect.next() => match ev {
+                        None => {
+                            tracing::warn!("Inference engine pod reflector stream ended unexpectedly");
+                            break;
+                        }
+                        // During a relist the reflector emits Init + one InitApply
+                        // per pod + InitDone (n+2 events). Rebuilding on each is
+                        // quadratic, so skip the per-object relist events: the store
+                        // is already consistent at InitDone, and Apply/Delete are
+                        // single-object deltas. (Errors don't change the store.)
+                        Some(Ok(watcher::Event::Init | watcher::Event::InitApply(_))) => continue,
+                        Some(Ok(watcher::Event::InitDone)) => pod_synced = true,
+                        Some(Ok(_)) => {}
+                        Some(Err(e)) => {
+                            tracing::warn!(error = %e, "Pod reflector watch error; retrying");
+                            continue;
+                        }
+                    },
+                    changed = pool_rx.changed() => {
+                        if changed.is_err() {
+                            tracing::warn!("InferencePool watch ended");
+                            break;
+                        }
+                    }
+                }
+                // Rebuild the snapshot and recompute readiness under a single pool
+                // borrow. Readiness is live: it drops to false whenever the pool is
+                // absent/invalid (empty snapshot) and recovers once both are healthy.
+                let (snap, is_ready) = {
+                    let pool = pool_rx.borrow();
+                    let snap =
+                        build_snapshot(&store_task, pool.as_ref(), kv_event_port, replay_port);
+                    (snap, pod_synced && pool.is_some())
+                };
+                ready_task.store(is_ready, Ordering::Release);
+                let _ = snapshot_tx.send(Arc::new(snap));
                 generation = generation.wrapping_add(1);
                 let _ = changes_tx.send(generation);
             }
+            // Either watch stream ended: the producer is gone and can no longer
+            // refresh discovery, so stop advertising readiness.
+            ready_task.store(false, Ordering::Release);
         });
-
-        let store_for_wait = store.clone();
-        let ready_for_wait = ready.clone();
-        match tokio::time::timeout(Duration::from_secs(30), store_for_wait.wait_until_ready()).await
-        {
-            Ok(Ok(())) => {
-                ready_for_wait.store(true, Ordering::Release);
-                tracing::info!("Pod reflector initial LIST sync complete");
-            }
-            Ok(Err(e)) => {
-                tracing::warn!(error = %e, "Pod reflector writer dropped before initial LIST");
-            }
-            Err(_) => {
-                tracing::warn!(
-                    "Pod reflector initial LIST timed out after 30s; ready in background"
-                );
-                let store_bg = store.clone();
-                let ready_bg = ready.clone();
-                tokio::spawn(async move {
-                    if store_bg.wait_until_ready().await.is_ok() {
-                        ready_bg.store(true, Ordering::Release);
-                        tracing::info!("Pod reflector became ready after startup timeout");
-                    }
-                });
-            }
-        }
 
         Ok((
             Self {
@@ -219,11 +222,63 @@ impl PodDiscovery {
         self.snapshot.borrow().endpoints.get(&worker_id).cloned()
     }
 
+    /// Retain the `worker_ids` whose current `ip:port` endpoint satisfies `pred`,
+    /// under a **single** snapshot borrow and **without cloning** any endpoint
+    /// (`pred` borrows it). Used on the subset-routing path so membership testing
+    /// doesn't allocate a throwaway `String` per candidate. Unknown workers are
+    /// dropped.
+    pub fn filter_workers_by_endpoint(
+        &self,
+        worker_ids: &HashSet<u64>,
+        pred: impl Fn(&str) -> bool,
+    ) -> HashSet<u64> {
+        let snapshot = self.snapshot.borrow();
+        worker_ids
+            .iter()
+            .copied()
+            .filter(|worker_id| {
+                snapshot
+                    .endpoints
+                    .get(worker_id)
+                    .is_some_and(|endpoint| pred(endpoint.as_str()))
+            })
+            .collect()
+    }
+
     /// Subscribe to change notifications (a generation counter) bumped on pod or
     /// pool changes, so a reconciler can re-sync.
     pub fn subscribe_changes(&self) -> watch::Receiver<u64> {
         self.changes.clone()
     }
+}
+
+/// Return `true` iff the pod is `Ready` and not terminating. Mirrors llm-d's
+/// `IsPodReady`: a pod with a deletion timestamp is excluded even if it still
+/// reports `Ready=True`, so draining pods stop receiving traffic promptly.
+fn pod_is_ready(pod: &Pod) -> bool {
+    if pod.metadata.deletion_timestamp.is_some() {
+        return false;
+    }
+    pod.status
+        .as_ref()
+        .and_then(|s| s.conditions.as_ref())
+        .map(|conds| {
+            conds
+                .iter()
+                .any(|c| c.type_ == "Ready" && c.status == "True")
+        })
+        .unwrap_or(false)
+}
+
+/// Return `true` iff the pod carries every `match_labels` key with the equal
+/// value (equality-based selector, matching `InferencePool.spec.selector`).
+fn pod_matches(pod: &Pod, match_labels: &BTreeMap<String, String>) -> bool {
+    let Some(labels) = pod.metadata.labels.as_ref() else {
+        return match_labels.is_empty();
+    };
+    match_labels
+        .iter()
+        .all(|(k, v)| labels.get(k).map(|pv| pv == v).unwrap_or(false))
 }
 
 fn strip_scheme(endpoint: &str) -> &str {
@@ -258,35 +313,6 @@ fn build_snapshot(
     Snapshot { workers, endpoints }
 }
 
-/// Return `true` iff the pod is `Ready` and not terminating. Mirrors llm-d's
-/// `IsPodReady`: a pod with a deletion timestamp is excluded even if it still
-/// reports `Ready=True`, so draining pods stop receiving traffic promptly.
-fn pod_is_ready(pod: &Pod) -> bool {
-    if pod.metadata.deletion_timestamp.is_some() {
-        return false;
-    }
-    pod.status
-        .as_ref()
-        .and_then(|s| s.conditions.as_ref())
-        .map(|conds| {
-            conds
-                .iter()
-                .any(|c| c.type_ == "Ready" && c.status == "True")
-        })
-        .unwrap_or(false)
-}
-
-/// Return `true` iff the pod carries every `match_labels` key with the equal
-/// value (equality-based selector, matching `InferencePool.spec.selector`).
-fn pod_matches(pod: &Pod, match_labels: &BTreeMap<String, String>) -> bool {
-    let Some(labels) = pod.metadata.labels.as_ref() else {
-        return match_labels.is_empty();
-    };
-    match_labels
-        .iter()
-        .all(|(k, v)| labels.get(k).map(|pv| pv == v).unwrap_or(false))
-}
-
 /// Build a [`RawWorker`] from a pod, or `None` if it is not `Ready`, not
 /// pool-selected, or lacks an IP/name. Pure function — unit-testable.
 fn raw_worker_from_pod(
@@ -300,17 +326,20 @@ fn raw_worker_from_pod(
     }
     let pod_name = pod.metadata.name.as_deref()?;
     let pod_ip = pod.status.as_ref()?.pod_ip.as_deref()?;
-    if pod_ip.is_empty() {
-        return None;
-    }
+    // A Pod IP is always an IP literal (never a hostname). Parse it so each
+    // host/port pair is rendered via `SocketAddr`, which brackets IPv6 as
+    // `[fd00::10]:8000`; a bare IPv6 literal (`fd00::10:8000`) is ambiguous, as
+    // the trailing group can't be told apart from the port. IPv4 is unchanged.
+    // An empty or malformed IP fails to parse and skips the pod.
+    let ip: IpAddr = pod_ip.parse().ok()?;
 
     Some(RawWorker {
         worker_id: hash_pod_name(pod_name),
         pod_name: pod_name.to_string(),
         pod_ip: pod_ip.to_string(),
-        http_endpoint: format!("http://{pod_ip}:{}", pool.target_port),
-        kv_events_endpoint: format!("tcp://{pod_ip}:{kv_event_port}"),
-        replay_endpoint: replay_port.map(|p| format!("tcp://{pod_ip}:{p}")),
+        http_endpoint: format!("http://{}", SocketAddr::new(ip, pool.target_port)),
+        kv_events_endpoint: format!("tcp://{}", SocketAddr::new(ip, kv_event_port)),
+        replay_endpoint: replay_port.map(|p| format!("tcp://{}", SocketAddr::new(ip, p))),
         stable_routing_id: pod_name.to_string(),
     })
 }
@@ -374,6 +403,44 @@ mod tests {
         assert_eq!(w.http_endpoint, "http://10.0.0.1:8000");
         assert_eq!(w.kv_events_endpoint, "tcp://10.0.0.1:5557");
         assert_eq!(w.replay_endpoint.as_deref(), Some("tcp://10.0.0.1:5560"));
+    }
+
+    #[test]
+    fn ipv6_pod_ip_is_bracketed_in_all_endpoints() {
+        let w = raw_worker_from_pod(
+            &pod(
+                "vllm-0",
+                Some("fd00::10"),
+                Some(true),
+                &[("app", "vllm-qwen")],
+            ),
+            &pool(),
+            5557,
+            Some(5560),
+        )
+        .expect("ready, selected IPv6 pod should map");
+        // SocketAddr brackets the IPv6 host so host and port are unambiguous.
+        assert_eq!(w.http_endpoint, "http://[fd00::10]:8000");
+        assert_eq!(w.kv_events_endpoint, "tcp://[fd00::10]:5557");
+        assert_eq!(w.replay_endpoint.as_deref(), Some("tcp://[fd00::10]:5560"));
+    }
+
+    #[test]
+    fn malformed_pod_ip_is_skipped() {
+        assert!(
+            raw_worker_from_pod(
+                &pod(
+                    "vllm-0",
+                    Some("not-an-ip"),
+                    Some(true),
+                    &[("app", "vllm-qwen")]
+                ),
+                &pool(),
+                5557,
+                None,
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -492,5 +559,37 @@ mod tests {
         let snap = build_snapshot(&store, None, 5557, None);
         assert!(snap.workers.is_empty());
         assert!(snap.endpoints.is_empty());
+    }
+
+    /// Build a `PodDiscovery` over a fixed endpoint index (no cluster) so we can
+    /// unit-test the borrow-based subset filter. Dropping the senders is fine —
+    /// `watch::Receiver::borrow()` still returns the last value.
+    fn discovery_with_endpoints(endpoints: HashMap<u64, String>) -> PodDiscovery {
+        let (_, snapshot) = watch::channel(Arc::new(Snapshot {
+            endpoints,
+            ..Default::default()
+        }));
+        let (_, changes) = watch::channel(0u64);
+        PodDiscovery { snapshot, changes }
+    }
+
+    #[test]
+    fn filter_workers_by_endpoint_matches_without_cloning() {
+        let discovery = discovery_with_endpoints(HashMap::from([
+            (1u64, "10.0.0.1:8000".to_string()),
+            (2u64, "10.0.0.2:8000".to_string()),
+            (3u64, "10.0.0.3:8000".to_string()),
+        ]));
+        let allowed: HashSet<u64> = [1, 2, 3].into_iter().collect();
+
+        // Predicate borrows the endpoint; only worker 2 matches.
+        let filtered =
+            discovery.filter_workers_by_endpoint(&allowed, |endpoint| endpoint == "10.0.0.2:8000");
+        assert_eq!(filtered, HashSet::from([2]));
+
+        // A worker id with no endpoint in the snapshot is dropped.
+        let allowed_with_unknown: HashSet<u64> = [1, 99].into_iter().collect();
+        let filtered = discovery.filter_workers_by_endpoint(&allowed_with_unknown, |_| true);
+        assert_eq!(filtered, HashSet::from([1]));
     }
 }
