@@ -151,7 +151,17 @@ jobs:
           rustup component add rustfmt clippy
           cargo fmt -- --check
           cargo clippy --features block-manager,media-ffmpeg,testing-nixl,integration --no-deps --all-targets -- -D warnings
-          cargo test --locked --all-targets --features=block-manager,media-ffmpeg,testing-nixl,integration -- --nocapture
+          # dynamo_llm lib unit tests mutate process env via `temp_env`
+          # (std::env::set_var/remove_var); in a multi-threaded libtest binary that
+          # races getenv() in another test thread (a parallel test's std::env::var,
+          # or a native UCX/CUDA thread), reallocating `environ` out from under the
+          # reader -> teardown SIGSEGV (~14% under CI node contention). getenv/setenv
+          # isn't thread-safe and serial_test can't serialize the readers, so run the
+          # lib tests single-threaded. (Verified on the GPU tester: under 12x
+          # contention 3/3 parallel shards segfault, 0/3 with --test-threads=1.)
+          # Other targets have no env writers, so they stay parallel.
+          cargo test --locked --lib --features=block-manager,media-ffmpeg,testing-nixl,integration -- --nocapture --test-threads=1
+          cargo test --locked --tests --bins --examples --benches --features=block-manager,media-ffmpeg,testing-nixl,integration -- --nocapture
           cargo clippy -p kvbm-physical --no-deps --all-targets -- -D warnings
           cargo test --locked -p kvbm-physical --features testing-kvbm -- --nocapture --test-threads=4
           /workspace/container/use-sccache.sh show-stats "Rust Checks"
