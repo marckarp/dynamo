@@ -6,24 +6,27 @@
 #
 # Usage:
 #   export NAMESPACE=your-namespace
-#   bash cleanup.sh [--delete-pvc] [--delete-namespace]
+#   bash cleanup.sh [--delete-pvc] [--delete-namespace] [--delete-secrets]
 #
-# By default the 592 GB model PVC and the namespace are preserved so that
-# a redeploy can reuse cached weights without re-downloading. Pass
-# --delete-pvc and/or --delete-namespace to remove them.
+# By default the 592 GB model PVC, the namespace, and the pull/HF
+# credentials are preserved so that a redeploy can reuse cached weights
+# without re-downloading or re-creating secrets. Pass --delete-pvc,
+# --delete-namespace, and/or --delete-secrets to remove them.
 
 set -euo pipefail
 
 DELETE_PVC=0
 DELETE_NAMESPACE=0
+DELETE_SECRETS=0
 
 for arg in "$@"; do
   case "$arg" in
     --delete-pvc)       DELETE_PVC=1 ;;
     --delete-namespace) DELETE_NAMESPACE=1 ;;
+    --delete-secrets)   DELETE_SECRETS=1 ;;
     *)
       echo "Unknown argument: $arg"
-      echo "Usage: $0 [--delete-pvc] [--delete-namespace]"
+      echo "Usage: $0 [--delete-pvc] [--delete-namespace] [--delete-secrets]"
       exit 1
       ;;
   esac
@@ -48,9 +51,13 @@ kubectl delete job inkling-model-download \
   -n "${NAMESPACE}" --ignore-not-found=true
 
 # Delete secrets
-echo "==> Deleting secrets (nvcr-imagepullsecret, hf-token-secret)..."
-kubectl delete secret nvcr-imagepullsecret hf-token-secret \
-  -n "${NAMESPACE}" --ignore-not-found=true
+if [[ "${DELETE_SECRETS}" -eq 1 ]]; then
+  echo "==> Deleting secrets (nvcr-imagepullsecret, hf-token-secret)..."
+  kubectl delete secret nvcr-imagepullsecret hf-token-secret \
+    -n "${NAMESPACE}" --ignore-not-found=true
+else
+  echo "==> Skipping secret deletion (pass --delete-secrets to remove nvcr-imagepullsecret and hf-token-secret)"
+fi
 
 if [[ "${DELETE_PVC}" -eq 1 ]]; then
   echo "==> Deleting PVC model-cache (WARNING: destroys 592 GB of downloaded weights)..."
