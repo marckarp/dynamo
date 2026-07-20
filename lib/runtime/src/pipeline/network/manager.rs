@@ -38,6 +38,9 @@ static ACTUAL_TCP_RPC_PORT: OnceLock<u16> = OnceLock::new();
 static GLOBAL_TCP_SERVER: tokio::sync::OnceCell<Arc<SharedTcpServer>> =
     tokio::sync::OnceCell::const_new();
 
+/// First valid process-wide engine capacity reported for automatic TCP sizing.
+static GLOBAL_ENGINE_CAPACITY_HINT: OnceLock<usize> = OnceLock::new();
+
 /// Process-wide cancellation token for the global TCP server.
 ///
 /// This token is independent of any individual runtime's cancellation token so that
@@ -197,6 +200,28 @@ impl NetworkManager {
         }
     }
 
+    /// Record the first engine capacity without starting the request-plane server.
+    pub async fn set_engine_capacity_hint(&self, engine_capacity: usize) -> Result<()> {
+        if !matches!(self.mode, RequestPlaneMode::Tcp) || engine_capacity == 0 {
+            return Ok(());
+        }
+
+        GLOBAL_ENGINE_CAPACITY_HINT.get_or_init(|| engine_capacity);
+        self.apply_engine_capacity_hint().await
+    }
+
+    async fn apply_engine_capacity_hint(&self) -> Result<()> {
+        if matches!(self.mode, RequestPlaneMode::Tcp)
+            && let Some(engine_capacity) = GLOBAL_ENGINE_CAPACITY_HINT.get().copied()
+            && let Some(server) = GLOBAL_TCP_SERVER.get()
+        {
+            server
+                .update_worker_pool_from_engine_capacity(engine_capacity)
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Get or create the request plane server
     ///
     /// The server is created lazily on first access and cached for subsequent calls.
@@ -217,6 +242,7 @@ impl NetworkManager {
             .server
             .get_or_try_init(async { self.create_server().await })
             .await?;
+        self.apply_engine_capacity_hint().await?;
 
         Ok(server.clone())
     }
@@ -277,7 +303,7 @@ impl NetworkManager {
                     "Creating TCP request plane server"
                 );
 
-                let server = SharedTcpServer::new(bind_addr, GLOBAL_TCP_SERVER_TOKEN.clone());
+                let server = SharedTcpServer::new(bind_addr, GLOBAL_TCP_SERVER_TOKEN.clone())?;
 
                 // Bind and start server, getting the actual bound address
                 let actual_addr = server.clone().bind_and_start().await?;
