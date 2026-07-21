@@ -229,9 +229,9 @@ func TestBuildCheckpointJob(t *testing.T) {
 	// Default deadlines
 	assert.Equal(t, int64(3600), *job.Spec.ActiveDeadlineSeconds)
 	assert.Equal(t, int32(0), *job.Spec.BackoffLimit)
-	assert.Equal(t, int32(300), *job.Spec.TTLSecondsAfterFinished)
+	assert.Nil(t, job.Spec.TTLSecondsAfterFinished)
 
-	// Custom active deadlines override defaults, but checkpoint jobs never retry and keep a fixed TTL.
+	// Custom active deadlines override defaults, but checkpoint jobs never retry or use automatic TTL cleanup.
 	deadline := int64(7200)
 	backoff := int32(5)
 	ckpt.Spec.Job.ActiveDeadlineSeconds = &deadline
@@ -240,7 +240,7 @@ func TestBuildCheckpointJob(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(7200), *job.Spec.ActiveDeadlineSeconds)
 	assert.Equal(t, int32(0), *job.Spec.BackoffLimit)
-	assert.Equal(t, int32(300), *job.Spec.TTLSecondsAfterFinished)
+	assert.Nil(t, job.Spec.TTLSecondsAfterFinished)
 
 	// Deprecated identity fields no longer control checkpoint launch wrapping.
 	ckpt.Spec.Identity.TensorParallelSize = 2
@@ -1164,7 +1164,7 @@ func TestCheckpointReconciler_HandleCreating(t *testing.T) {
 	})
 
 	t.Run("deleted job with Ready snapshot transitions to Failed", func(t *testing.T) {
-		// Ready is only set while the Job is live; a TTL/force-deleted Job must not promote Ready.
+		// Ready is only set while the Job is live; an externally deleted Job must not promote Ready.
 		ckpt := makeCreatingCkpt(testHash, "job-deleted")
 		snap := buildPodSnapshot(ckpt, testHash, podNamed("worker-x"))
 		setCheckpointOwner(ckpt, snap)
