@@ -301,27 +301,10 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e | grep -v /test | grep -v /cmd) -coverprofile cover.out
 
-# Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
-.PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
+# Deprecated manual smoke test for the legacy Kustomize install path.
+.PHONY: test-e2e
 test-e2e:
 	go test ./test/e2e/ -v -ginkgo.v
-
-# DGDR e2e test configuration.
-# Override these via the command line, e.g.:
-#   make test-e2e-dgdr DGDR_IMAGE=nvcr.io/nvidia/ai-dynamo/dynamo-planner:1.1.0
-DGDR_TEST_TIMEOUT ?= 75m
-DGDR_NAMESPACE ?= dynamo-test
-DGDR_IMAGE ?=
-
-.PHONY: test-e2e-dgdr  # Run DGDR e2e tests against a live cluster with the operator installed.
-test-e2e-dgdr:
-ifndef DGDR_IMAGE
-	$(error DGDR_IMAGE is required. Example: make test-e2e-dgdr DGDR_IMAGE=nvcr.io/nvidia/ai-dynamo/dynamo-planner:1.1.0)
-endif
-	go test ./test/e2e/dgdr/ -v -ginkgo.v -timeout=$(DGDR_TEST_TIMEOUT) \
-		-dgdr-namespace=$(DGDR_NAMESPACE) \
-		-dgdr-image=$(DGDR_IMAGE) \
-		$(DGDR_TEST_FLAGS)
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter & yamllint
