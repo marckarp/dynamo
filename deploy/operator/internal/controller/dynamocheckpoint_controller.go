@@ -139,8 +139,23 @@ func (r *CheckpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	// A terminal phase is the durable record that permits deleting its Job. Do this
-	// before duplicate or artifact-version normalization can discard the retained Job reference.
+	// Older controllers marked Ready when only the PodSnapshot succeeded. If their owned Job is
+	// still present, retain it and durably return to Creating so its terminal state is re-evaluated.
+	// A missing jobName or Job keeps the legacy Ready status unchanged.
+	if ckpt.Status.Phase == nvidiacomv1alpha1.DynamoCheckpointPhaseReady &&
+		!checkpointReadyForJobCleanup(ckpt) {
+		migrated, err := r.migrateLegacyReadyCheckpoint(ctx, ckpt)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if migrated {
+			return ctrl.Result{}, nil
+		}
+	}
+
+	// A Failed phase, or Ready with the new success proof, is the durable record that permits
+	// deleting its Job. Do this before duplicate or artifact-version normalization can discard the
+	// retained Job reference.
 	if isTerminalCheckpointPhase(ckpt.Status.Phase) && ckpt.Status.JobName != "" {
 		if err := r.cleanupTerminalCheckpointJob(ctx, ckpt); err != nil {
 			return ctrl.Result{}, err
@@ -528,6 +543,10 @@ func (r *CheckpointReconciler) cleanupTerminalCheckpointJob(ctx context.Context,
 	if !isTerminalCheckpointPhase(ckpt.Status.Phase) {
 		return nil
 	}
+	if ckpt.Status.Phase == nvidiacomv1alpha1.DynamoCheckpointPhaseReady &&
+		!checkpointReadyForJobCleanup(ckpt) {
+		return nil
+	}
 	if ckpt.Status.JobName == "" {
 		return nil
 	}
@@ -555,6 +574,36 @@ func (r *CheckpointReconciler) cleanupTerminalCheckpointJob(ctx context.Context,
 	return nil
 }
 
+// migrateLegacyReadyCheckpoint returns an unproven legacy Ready checkpoint with a retained owned
+// Job to Creating. Persisting this phase before observing the Job prevents cleanup until a new
+// Ready or Failed outcome is durable.
+func (r *CheckpointReconciler) migrateLegacyReadyCheckpoint(ctx context.Context, ckpt *nvidiacomv1alpha1.DynamoCheckpoint) (bool, error) {
+	if ckpt.Status.JobName == "" {
+		return false, nil
+	}
+
+	job := &batchv1.Job{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ckpt.Namespace, Name: ckpt.Status.JobName}, job); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !metav1.IsControlledBy(job, ckpt) {
+		return false, nil
+	}
+	if err := r.removeCheckpointJobTTL(ctx, ckpt, job); err != nil {
+		return false, err
+	}
+
+	ckpt.Status.Phase = nvidiacomv1alpha1.DynamoCheckpointPhaseCreating
+	ckpt.Status.CreatedAt = nil
+	if err := r.Status().Update(ctx, ckpt); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // removeCheckpointJobTTL migrates operator-owned Jobs created before terminal cleanup became
 // controller-driven. Generic snapshot-protocol Jobs and foreign name collisions are untouched.
 func (r *CheckpointReconciler) removeCheckpointJobTTL(ctx context.Context, ckpt *nvidiacomv1alpha1.DynamoCheckpoint, job *batchv1.Job) error {
@@ -573,6 +622,16 @@ func (r *CheckpointReconciler) removeCheckpointJobTTL(ctx context.Context, ckpt 
 func isTerminalCheckpointPhase(phase nvidiacomv1alpha1.DynamoCheckpointPhase) bool {
 	return phase == nvidiacomv1alpha1.DynamoCheckpointPhaseReady ||
 		phase == nvidiacomv1alpha1.DynamoCheckpointPhaseFailed
+}
+
+func checkpointReadyForJobCleanup(ckpt *nvidiacomv1alpha1.DynamoCheckpoint) bool {
+	condition := meta.FindStatusCondition(
+		ckpt.Status.Conditions,
+		string(nvidiacomv1alpha1.DynamoCheckpointConditionJobCompleted),
+	)
+	return condition != nil &&
+		condition.Status == metav1.ConditionTrue &&
+		condition.Reason == "PodSnapshotAndJobReady"
 }
 
 // podSnapshotConditionMessage returns the message of the named PodSnapshot condition, or "".

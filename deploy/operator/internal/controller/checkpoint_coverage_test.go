@@ -27,6 +27,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -280,6 +281,148 @@ func TestCheckpointHandlePendingRecoversOwnedJobWhenRenderingFails(t *testing.T)
 	assert.Equal(t, job.Name, storedCheckpoint.Status.JobName)
 }
 
+func TestCheckpointReconcileMigratesLegacyReadyJob(t *testing.T) {
+	tests := []struct {
+		name              string
+		jobCondition      *batchv1.JobCondition
+		legacyCondition   bool
+		wantPhase         nvidiacomv1alpha1.DynamoCheckpointPhase
+		wantJobRetained   bool
+		wantReadyProof    bool
+		wantFailureReason string
+	}{
+		{
+			name:            "active",
+			legacyCondition: true,
+			wantPhase:       nvidiacomv1alpha1.DynamoCheckpointPhaseCreating,
+			wantJobRetained: true,
+		},
+		{
+			name: "Complete",
+			jobCondition: &batchv1.JobCondition{
+				Type:   batchv1.JobComplete,
+				Status: corev1.ConditionTrue,
+			},
+			wantPhase:      nvidiacomv1alpha1.DynamoCheckpointPhaseReady,
+			wantReadyProof: true,
+		},
+		{
+			name: "Failed",
+			jobCondition: &batchv1.JobCondition{
+				Type:    batchv1.JobFailed,
+				Status:  corev1.ConditionTrue,
+				Message: "gms-saver exited 1",
+			},
+			legacyCondition:   true,
+			wantPhase:         nvidiacomv1alpha1.DynamoCheckpointPhaseFailed,
+			wantFailureReason: "JobFailed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			ckpt := newOwnedCheckpoint()
+			ckpt.Status.Phase = nvidiacomv1alpha1.DynamoCheckpointPhaseReady
+			ckpt.Status.JobName = defaultCheckpointJobName
+			ckpt.Status.CreatedAt = ptr.To(metav1.Now())
+			if tt.legacyCondition {
+				meta.SetStatusCondition(&ckpt.Status.Conditions, metav1.Condition{
+					Type:   string(nvidiacomv1alpha1.DynamoCheckpointConditionJobCompleted),
+					Status: metav1.ConditionTrue,
+					Reason: "PodSnapshotReady",
+				})
+			}
+
+			job := healthyCheckpointJob(defaultCheckpointJobName)
+			job.Spec.TTLSecondsAfterFinished = ptr.To(snapshotprotocol.DefaultCheckpointJobTTLSeconds)
+			if tt.jobCondition != nil {
+				job.Status.Conditions = []batchv1.JobCondition{*tt.jobCondition}
+			}
+			setCheckpointJobOwner(ckpt, job)
+
+			snap := buildPodSnapshot(ckpt, testHash, podNamed("worker-0"))
+			setCheckpointOwner(ckpt, snap)
+			snap.Status.BoundPodSnapshotContentName = ptr.To("podsnapshotcontent-" + testHash)
+			meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+				Type:    nvidiacomv1alpha1.PodSnapshotConditionReady,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Captured",
+				Message: "checkpoint captured",
+			})
+
+			r := makeCheckpointReconciler(checkpointTestScheme(), ckpt, job, snap)
+			request := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(ckpt)}
+
+			_, err := r.Reconcile(ctx, request)
+			require.NoError(t, err)
+
+			storedCheckpoint := &nvidiacomv1alpha1.DynamoCheckpoint{}
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(ckpt), storedCheckpoint))
+			assert.Equal(t, nvidiacomv1alpha1.DynamoCheckpointPhaseCreating, storedCheckpoint.Status.Phase)
+			assert.Nil(t, storedCheckpoint.Status.CreatedAt)
+			storedJob := &batchv1.Job{}
+			require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(job), storedJob))
+			assert.Nil(t, storedJob.Spec.TTLSecondsAfterFinished)
+
+			if tt.jobCondition != nil {
+				_, err = r.Reconcile(ctx, request)
+				require.NoError(t, err)
+				require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(ckpt), storedCheckpoint))
+			}
+
+			assert.Equal(t, tt.wantPhase, storedCheckpoint.Status.Phase)
+			completed := meta.FindStatusCondition(
+				storedCheckpoint.Status.Conditions,
+				string(nvidiacomv1alpha1.DynamoCheckpointConditionJobCompleted),
+			)
+			if tt.wantReadyProof {
+				require.NotNil(t, completed)
+				assert.Equal(t, metav1.ConditionTrue, completed.Status)
+				assert.Equal(t, "PodSnapshotAndJobReady", completed.Reason)
+			}
+			if tt.wantFailureReason != "" {
+				require.NotNil(t, completed)
+				assert.Equal(t, metav1.ConditionFalse, completed.Status)
+				assert.Equal(t, tt.wantFailureReason, completed.Reason)
+				assert.Contains(t, storedCheckpoint.Status.Message, "gms-saver exited 1")
+			}
+
+			err = r.Get(ctx, client.ObjectKeyFromObject(job), &batchv1.Job{})
+			if tt.wantJobRetained {
+				require.NoError(t, err)
+			} else {
+				assert.True(t, apierrors.IsNotFound(err), "terminal legacy Job was not deleted: %v", err)
+			}
+		})
+	}
+}
+
+func TestCheckpointLegacyReadyMigrationStatusFailureRetainsJob(t *testing.T) {
+	ctx := context.Background()
+	ckpt := newOwnedCheckpoint()
+	ckpt.Status.Phase = nvidiacomv1alpha1.DynamoCheckpointPhaseReady
+	ckpt.Status.JobName = defaultCheckpointJobName
+	job := healthyCheckpointJob(defaultCheckpointJobName)
+	setCheckpointJobOwner(ckpt, job)
+
+	statusErr := errors.New("status update failed")
+	funcs := interceptor.Funcs{
+		SubResourceUpdate: func(context.Context, client.Client, string, client.Object, ...client.SubResourceUpdateOption) error {
+			return statusErr
+		},
+	}
+	r := makeCheckpointReconcilerWithInterceptor(checkpointTestScheme(), funcs, ckpt, job)
+
+	_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(ckpt)})
+	require.ErrorIs(t, err, statusErr)
+	require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(job), &batchv1.Job{}))
+
+	storedCheckpoint := &nvidiacomv1alpha1.DynamoCheckpoint{}
+	require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(ckpt), storedCheckpoint))
+	assert.Equal(t, nvidiacomv1alpha1.DynamoCheckpointPhaseReady, storedCheckpoint.Status.Phase)
+}
+
 func TestCheckpointTerminalStatusIsDurableBeforeJobCleanup(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -320,6 +463,9 @@ func TestCheckpointTerminalStatusIsDurableBeforeJobCleanup(t *testing.T) {
 					require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(ckpt), stored))
 					assert.Equal(t, tt.phase, stored.Status.Phase)
 					assert.Equal(t, job.Name, stored.Status.JobName)
+					if tt.phase == nvidiacomv1alpha1.DynamoCheckpointPhaseReady {
+						assert.True(t, checkpointReadyForJobCleanup(stored))
+					}
 					return c.Delete(ctx, obj, opts...)
 				},
 			}
