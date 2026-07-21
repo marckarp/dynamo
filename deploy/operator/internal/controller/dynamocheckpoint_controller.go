@@ -139,20 +139,6 @@ func (r *CheckpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	// Older controllers marked Ready when only the PodSnapshot succeeded. If their owned Job is
-	// still present, retain it and durably return to Creating so its terminal state is re-evaluated.
-	// A missing jobName or Job keeps the legacy Ready status unchanged.
-	if ckpt.Status.Phase == nvidiacomv1alpha1.DynamoCheckpointPhaseReady &&
-		!checkpointReadyForJobCleanup(ckpt) {
-		migrated, err := r.migrateLegacyReadyCheckpoint(ctx, ckpt)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		if migrated {
-			return ctrl.Result{}, nil
-		}
-	}
-
 	// A Failed phase, or Ready with the new success proof, is the durable record that permits
 	// deleting its Job. Do this before duplicate or artifact-version normalization can discard the
 	// retained Job reference.
@@ -572,36 +558,6 @@ func (r *CheckpointReconciler) cleanupTerminalCheckpointJob(ctx context.Context,
 		return fmt.Errorf("delete terminal checkpoint job %s/%s: %w", job.Namespace, job.Name, err)
 	}
 	return nil
-}
-
-// migrateLegacyReadyCheckpoint returns an unproven legacy Ready checkpoint with a retained owned
-// Job to Creating. Persisting this phase before observing the Job prevents cleanup until a new
-// Ready or Failed outcome is durable.
-func (r *CheckpointReconciler) migrateLegacyReadyCheckpoint(ctx context.Context, ckpt *nvidiacomv1alpha1.DynamoCheckpoint) (bool, error) {
-	if ckpt.Status.JobName == "" {
-		return false, nil
-	}
-
-	job := &batchv1.Job{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ckpt.Namespace, Name: ckpt.Status.JobName}, job); err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if !metav1.IsControlledBy(job, ckpt) {
-		return false, nil
-	}
-	if err := r.removeCheckpointJobTTL(ctx, ckpt, job); err != nil {
-		return false, err
-	}
-
-	ckpt.Status.Phase = nvidiacomv1alpha1.DynamoCheckpointPhaseCreating
-	ckpt.Status.CreatedAt = nil
-	if err := r.Status().Update(ctx, ckpt); err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 // removeCheckpointJobTTL migrates operator-owned Jobs created before terminal cleanup became
