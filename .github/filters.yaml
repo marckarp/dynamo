@@ -149,7 +149,6 @@ snapshot:
   - 'deploy/snapshot/.*'
   - 'components/src/dynamo/common/snapshot/**'
   - 'deploy/operator/internal/checkpoint/**'
-  - 'deploy/operator/internal/controller/{checkpoint_*,dynamocheckpoint_controller*}.go'
   - 'tests/deploy/test_dynamocheckpoint.py'
 
 power_agent:
