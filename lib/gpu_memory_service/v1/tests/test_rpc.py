@@ -11,18 +11,11 @@ import threading
 from typing import cast
 
 import pytest
-
 from gpu_memory_service.v1.client import Manager
 from gpu_memory_service.v1.errors import FatalGMSError, GMSError
 from gpu_memory_service.v1.protocol import AccessClass, Allocation, Generation
 from gpu_memory_service.v1.registry import Registry
-from gpu_memory_service.v1.rpc import (
-    RPCClient,
-    RPCServer,
-    _Handler,
-    _receive,
-    _send,
-)
+from gpu_memory_service.v1.rpc import RPCClient, RPCServer, _Handler, _receive, _send
 from gpu_memory_service.v1.tests.fakes import VMM
 
 pytestmark = [pytest.mark.pre_merge, pytest.mark.integration, pytest.mark.gpu_0]

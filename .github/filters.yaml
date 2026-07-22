@@ -148,6 +148,7 @@ snapshot:
   - 'deploy/snapshot/**'
   - 'deploy/snapshot/.*'
   - 'components/src/dynamo/common/snapshot/**'
+  - 'lib/gpu_memory_service/v1/**'
   - 'deploy/operator/internal/checkpoint/**'
   - 'tests/deploy/test_dynamocheckpoint.py'
 

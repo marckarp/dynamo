@@ -6,7 +6,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from gpu_memory_service.v1.tests.test_deployment import (
     _create_resource_claim_template,
     _delete_resource_claim_template,

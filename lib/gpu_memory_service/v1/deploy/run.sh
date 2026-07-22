@@ -7,6 +7,7 @@ set -euo pipefail
 : "${NAMESPACE:?set NAMESPACE}"
 : "${NODE:?set NODE}"
 : "${IMAGE:?set IMAGE}"
+: "${IMAGE_PULL_SECRET:?set IMAGE_PULL_SECRET}"
 : "${CHECKPOINT_PVC:?set CHECKPOINT_PVC}"
 
 exec python -m pytest \
@@ -16,6 +17,7 @@ exec python -m pytest \
   --gms-v1-namespace "${NAMESPACE}" \
   --gms-v1-node "${NODE}" \
   --gms-v1-image "${IMAGE}" \
+  --gms-v1-image-pull-secret "${IMAGE_PULL_SECRET}" \
   --gms-v1-checkpoint-pvc "${CHECKPOINT_PVC}" \
   --gms-v1-checkpoint-path "${CHECKPOINT_PATH:-/checkpoints}" \
   --gms-v1-device-class "${DEVICE_CLASS:-gpu.nvidia.com}" \

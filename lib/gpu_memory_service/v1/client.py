@@ -13,7 +13,7 @@ from uuid import uuid4
 from gpu_memory_service.common.locks import GrantedLockType
 
 from .errors import FatalGMSError, GMSError
-from .interfaces import AllocationService, VMM
+from .interfaces import VMM, AllocationService
 from .protocol import AccessClass, Allocation, Generation, Mapping
 
 
@@ -475,11 +475,14 @@ class _PoolManager(Protocol):
     device: int
     _mappings: dict[int, Mapping]
 
-    def allocate_parameter(self, size: int) -> int: ...
+    def allocate_parameter(self, size: int) -> int:
+        pass
 
-    def allocate_private(self, size: int) -> int: ...
+    def allocate_private(self, size: int) -> int:
+        pass
 
-    def free(self, base: int) -> None: ...
+    def free(self, base: int) -> None:
+        pass
 
 
 class AllocationPools:

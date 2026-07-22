@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import pytest
-
 from gpu_memory_service.common.locks import GrantedLockType
 from gpu_memory_service.v1.client import AllocationPools, Manager
 from gpu_memory_service.v1.errors import FatalGMSError

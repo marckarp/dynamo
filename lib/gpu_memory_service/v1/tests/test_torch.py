@@ -8,7 +8,6 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
-
 from gpu_memory_service.v1.client import AllocationPools, Manager
 from gpu_memory_service.v1.errors import GMSError
 from gpu_memory_service.v1.protocol import AccessClass, Allocation, Generation, Mapping

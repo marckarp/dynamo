@@ -51,6 +51,7 @@ KUBE_CONTEXT=<context> \
 NAMESPACE=<namespace> \
 NODE=<gpu-node> \
 IMAGE=<torch-2.11-dynamo-image> \
+IMAGE_PULL_SECRET=<registry-pull-secret> \
 CHECKPOINT_PVC=<snapshot-pvc> \
 lib/gpu_memory_service/v1/deploy/run.sh
 ```

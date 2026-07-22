@@ -10,6 +10,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption("--gms-v1-namespace")
     group.addoption("--gms-v1-node")
     group.addoption("--gms-v1-image")
+    group.addoption("--gms-v1-image-pull-secret")
     group.addoption("--gms-v1-checkpoint-pvc")
     group.addoption("--gms-v1-checkpoint-path", default="/checkpoints")
     group.addoption("--gms-v1-device-class", default="gpu.nvidia.com")

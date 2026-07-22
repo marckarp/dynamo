@@ -31,6 +31,8 @@ metadata:
 spec:
   restartPolicy: Always
   runtimeClassName: __RUNTIME_CLASS__
+  imagePullSecrets:
+    - name: __IMAGE_PULL_SECRET__
   nodeSelector:
     kubernetes.io/hostname: __NODE__
   tolerations:

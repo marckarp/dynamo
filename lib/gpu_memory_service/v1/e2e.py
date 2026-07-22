@@ -52,6 +52,7 @@ async def run(
         await _standby()
 
     import torch
+
     from dynamo.common.snapshot.lifecycle import SnapshotConfig
 
     config = SnapshotConfig.from_env()

@@ -6,7 +6,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
 from gpu_memory_service.v1.errors import FatalGMSError, GMSError
 from gpu_memory_service.v1.protocol import AccessClass, Allocation, Generation
 from gpu_memory_service.v1.registry import Registry

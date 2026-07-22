@@ -114,6 +114,7 @@ def _checkpoint_cleanup_pod(
     namespace: str,
     node: str,
     image: str,
+    image_pull_secret: str,
     checkpoint_pvc: str,
     checkpoint_path: str,
 ) -> dict[str, Any]:
@@ -131,6 +132,7 @@ def _checkpoint_cleanup_pod(
         "spec": {
             "activeDeadlineSeconds": 120,
             "restartPolicy": "Never",
+            "imagePullSecrets": [{"name": image_pull_secret}],
             "nodeSelector": {"kubernetes.io/hostname": node},
             "tolerations": [
                 {
@@ -243,6 +245,7 @@ def _render(
     namespace: str,
     node: str,
     image: str,
+    image_pull_secret: str,
     checkpoint_pvc: str,
     checkpoint_path: str,
     device_class: str,
@@ -259,6 +262,7 @@ def _render(
         "__NAMESPACE__": namespace,
         "__NODE__": node,
         "__IMAGE__": image,
+        "__IMAGE_PULL_SECRET__": image_pull_secret,
         "__ARTIFACT_ID__": name,
         "__CHECKPOINT_PVC__": checkpoint_pvc,
         "__CHECKPOINT_PATH__": checkpoint_path,
@@ -283,6 +287,7 @@ async def test_gms_v1_dra_snapshot_deployment(
         "namespace": request.config.getoption("--gms-v1-namespace"),
         "node": request.config.getoption("--gms-v1-node"),
         "image": request.config.getoption("--gms-v1-image"),
+        "image_pull_secret": request.config.getoption("--gms-v1-image-pull-secret"),
         "checkpoint_pvc": request.config.getoption("--gms-v1-checkpoint-pvc"),
         "checkpoint_path": request.config.getoption("--gms-v1-checkpoint-path"),
         "device_class": request.config.getoption("--gms-v1-device-class"),
@@ -309,6 +314,7 @@ async def test_gms_v1_dra_snapshot_deployment(
         namespace=namespace,
         node=str(options["node"]),
         image=str(options["image"]),
+        image_pull_secret=str(options["image_pull_secret"]),
         checkpoint_pvc=str(options["checkpoint_pvc"]),
         checkpoint_path=str(options["checkpoint_path"]),
     )
