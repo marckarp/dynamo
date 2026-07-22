@@ -82,6 +82,8 @@ setup(
         "gpu_memory_service.integrations.vllm",
         "gpu_memory_service.snapshot",
         "gpu_memory_service.snapshot.backends",
+        "gpu_memory_service.v1",
+        "gpu_memory_service.v1.deploy",
     ],
     package_dir={
         "gpu_memory_service": ".",
@@ -103,14 +105,20 @@ setup(
         "gpu_memory_service.integrations.vllm": "integrations/vllm",
         "gpu_memory_service.snapshot": "snapshot",
         "gpu_memory_service.snapshot.backends": "snapshot/backends",
+        "gpu_memory_service.v1": "v1",
+        "gpu_memory_service.v1.deploy": "v1/deploy",
     },
     package_data={
         "gpu_memory_service.client.torch.extensions": ["*.cpp"],
+        "gpu_memory_service.v1": ["README.md"],
+        "gpu_memory_service.v1.deploy": ["*.yaml", "*.sh"],
     },
     entry_points={
         "console_scripts": [
             "gpu-memory-service=gpu_memory_service.cli.runner:main",
             "gms-storage-client=gpu_memory_service.cli.storage_runner:main",
+            "gms-v1-server=gpu_memory_service.v1.cli:main",
+            "gms-v1-e2e=gpu_memory_service.v1.e2e:main",
         ]
     },
     ext_modules=_create_ext_modules(),
